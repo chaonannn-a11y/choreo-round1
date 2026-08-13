@@ -453,7 +453,8 @@
     });
     if(actx.state==='suspended'){ try{ await actx.resume(); }catch(e){} }   // 解码前先尝试恢复
     let loaded=0, failed=0;
-    for(const L of LAYERS){
+    // 四条并行下载+解码（原来是串行，四条时间相加；并行后总耗时≈最慢那条，弱网下明显更快）
+    await Promise.all(LAYERS.map(async L=>{
       try{
         const resp = await fetch(dir+L.file);
         const buf = await decode(await resp.arrayBuffer());
@@ -463,7 +464,7 @@
         const g=actx.createGain(); g.gain.value = state.mute[L.id]?0:1; g.connect(actx.destination); gains[L.id]=g;
       }catch(e){ failed++; console.warn('decode fail',L.id,e); }
       loaded++; els.loading.textContent=`正在载入 AI 分离的四条音轨… (${loaded}/4)`;
-    }
+    }));
     if(failed===LAYERS.length){   // 四条全失败：别停在"正在载入"，给出可操作提示
       els.loading.textContent='音频加载失败，请点一下页面再刷新试试（或换 Chrome 打开）';
       return;
