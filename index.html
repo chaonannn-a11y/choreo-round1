@@ -58,11 +58,11 @@
   .song-select{margin-left:auto;max-width:46%;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;text-overflow:ellipsis}
   .song-select:hover{border-color:#4a4038}
   .song-select:focus{outline:none;border-color:var(--amber)}
-  .layers{position:relative;min-height:120px}
+  .layers{position:relative;min-height:120px;-webkit-user-select:none;-moz-user-select:none;user-select:none}
   /* 贯穿四轨的播放指针：一条长竖线，绝对定位在 layers 容器内、覆盖所有轨道 */
   .global-playhead{position:absolute;top:0;width:2px;background:#fff;box-shadow:0 0 8px #fff9;display:none;z-index:11;pointer-events:none}
   /* 八拍标尺：可选叠加层，覆盖在四轨之上。每拍一条竖线，每8拍第1拍加粗+标 1-8 计数 */
-  .beat-overlay{position:absolute;top:0;left:0;display:none;z-index:6;pointer-events:none}
+  .beat-overlay{position:absolute;top:0;left:0;display:none;z-index:6;pointer-events:none;-webkit-user-select:none;-moz-user-select:none;user-select:none}
   .beat-overlay.on{display:block}
   .beat-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)}
   .beat-line.b1{width:1.5px;background:rgba(255,255,255,.28)}   /* 每8拍的第1拍：加粗、更亮 */
@@ -106,7 +106,7 @@
   .seg-sel.editing{animation:segpulse .7s ease-in-out 3}
   @keyframes segpulse{0%,100%{box-shadow:0 0 14px -2px var(--pick),inset 0 0 20px -6px var(--pick)}50%{box-shadow:0 0 26px 2px var(--pick),inset 0 0 26px -4px var(--pick)}}
   /* 独立进度条：只控播放位置，不干涉选层。左缩 track-offset 使其左缘与波形轨道左缘对齐（默认1x时指针与圆圈同线）*/
-  .progress{position:relative;height:16px;margin:12px 0 16px var(--track-offset);cursor:pointer;display:flex;align-items:center}
+  .progress{position:relative;height:16px;margin:12px 0 16px var(--track-offset);cursor:pointer;display:flex;align-items:center;-webkit-user-select:none;-moz-user-select:none;user-select:none}
   .progress::before{content:'';position:absolute;left:0;right:0;height:5px;background:#2a231e;border-radius:99px;top:50%;transform:translateY(-50%)}
   .progress-fill{position:absolute;left:0;height:5px;background:var(--coral);border-radius:99px;top:50%;transform:translateY(-50%);width:0}
   .progress-knob{position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 6px #000a;left:0;transform:translateX(-50%);top:50%;margin-top:-7px}
