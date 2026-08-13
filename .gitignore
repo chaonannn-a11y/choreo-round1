@@ -8,6 +8,7 @@
 
 # 2) 再精确放行 demo 运行必需的（! = 取消忽略）
 !demo2_真分层.html
+!index.html
 !vendor/
 !beats/
 !.gitignore

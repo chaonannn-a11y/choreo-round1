@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChoreoAssist · 真·分层编舞脚手架（AI 分离版）</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- SoundTouchJS：保音高变速（time-stretch）。本地引入，离线/手机 LAN 都可用 -->
+<script src="vendor/soundtouch.js"></script>
+<style>
+  :root{
+    --bg:#14110f; --bg-panel:#1c1815; --bg-elev:#241f1b; --line:#332c26;
+    --ink:#f4ede4; --ink-dim:#a89b8c;
+    --coral:#ff5c38; --coral-soft:#ff5c3822; --teal:#5ad1c4; --teal-soft:#5ad1c41f; --amber:#ffb443;
+    --pick:#c8ff5a; --pick-soft:#c8ff5a33;   /* 选段高亮：独立于四轨颜色，醒目不刺眼 */
+    --spk-w:44px; --spk-gap:8px;             /* 左侧喇叭开关宽+间距；进度条据此左缩，与波形左缘对齐 */
+    --track-offset:52px;                     /* = spk-w + spk-gap，波形轨道相对面板左缘的偏移 */
+    --radius:14px;
+    --mono:'Space Mono',ui-monospace,monospace;
+    --sans:'Instrument Sans',system-ui,sans-serif;
+    --display:'Bricolage Grotesque',var(--sans);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(1200px 600px at 80% -10%, #2a201a 0%, transparent 55%),radial-gradient(900px 500px at -10% 110%, #1d2422 0%, transparent 50%),var(--bg);
+    color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;padding:26px clamp(16px,4vw,52px) 60px;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:20px}
+  .brand h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4.4vw,42px);letter-spacing:-.02em;line-height:1.02}
+  .brand h1 .accent{color:var(--coral)}
+  .brand .tag{color:var(--ink-dim);margin-top:6px;font-size:14px}
+  .badge{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--amber);border:1px solid #4a3a1e;background:#241b10;padding:5px 10px;border-radius:99px;letter-spacing:.06em;text-transform:uppercase;align-self:center;white-space:nowrap}
+  .steps{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
+  .step{font-family:var(--sans);font-size:12.5px;color:var(--ink-dim);border:1px solid var(--line);border-radius:99px;padding:5px 13px;display:flex;gap:7px;align-items:center}
+  .step .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .steps-note{font-size:12px;color:#6f6357;font-style:italic}
+  .console{background:linear-gradient(180deg,var(--bg-panel),#181411);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px 20px;box-shadow:0 24px 60px -30px #000, inset 0 1px 0 #ffffff08}
+  .transport{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-bottom:14px}
+  button{font-family:var(--sans);cursor:pointer;border:none;transition:.15s ease}
+  .btn{background:var(--bg-elev);color:var(--ink);border:1px solid var(--line);padding:9px 15px;border-radius:10px;font-weight:500;font-size:14px;display:inline-flex;align-items:center;gap:8px}
+  .btn:hover{border-color:#4a4038;background:#2b2521;transform:translateY(-1px)}
+  .btn:disabled{opacity:.38;cursor:not-allowed;transform:none}
+  .btn.pt{border-color:#5a3226;color:var(--coral)}
+  .btn.pt:hover:not(:disabled){background:var(--coral-soft)}
+  .btn.seg{border-color:#2f4a46;color:var(--teal)}
+  .btn.seg:hover{background:var(--teal-soft)}
+  .play{width:44px;height:44px;border-radius:50%;background:var(--coral);color:#1a0d08;display:grid;place-items:center;flex:none;font-size:17px}
+  .play:hover{background:#ff7357;box-shadow:0 8px 22px -8px var(--coral)}
+  .play:disabled{background:var(--bg-elev);color:var(--ink-dim);box-shadow:none}
+  .time{font-family:var(--mono);font-size:14px;color:var(--ink-dim);white-space:nowrap}
+  .time b{color:var(--ink);font-weight:700}
+  .file-name{font-size:13px;color:var(--ink-dim);margin-left:auto;font-family:var(--mono);max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 歌曲选择器：占用原文件名位置，右对齐；只有一首时也显示当前曲目 */
+  .song-select{margin-left:auto;max-width:46%;font-family:var(--mono);font-size:12.5px;color:var(--ink);background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer;text-overflow:ellipsis}
+  .song-select:hover{border-color:#4a4038}
+  .song-select:focus{outline:none;border-color:var(--amber)}
+  .layers{position:relative;min-height:120px}
+  /* 贯穿四轨的播放指针：一条长竖线，绝对定位在 layers 容器内、覆盖所有轨道 */
+  .global-playhead{position:absolute;top:0;width:2px;background:#fff;box-shadow:0 0 8px #fff9;display:none;z-index:11;pointer-events:none}
+  /* 八拍标尺：可选叠加层，覆盖在四轨之上。每拍一条竖线，每8拍第1拍加粗+标 1-8 计数 */
+  .beat-overlay{position:absolute;top:0;left:0;display:none;z-index:6;pointer-events:none}
+  .beat-overlay.on{display:block}
+  .beat-line{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.10)}
+  .beat-line.b1{width:1.5px;background:rgba(255,255,255,.28)}   /* 每8拍的第1拍：加粗、更亮 */
+  .beat-num{position:absolute;top:2px;font-family:var(--mono);font-size:9px;font-weight:700;color:rgba(255,255,255,.5);transform:translateX(2px)}
+  .beat-num.n1{color:var(--amber);font-size:10px}   /* 第1拍数字用琥珀色，一眼看到小节头 */
+  /* 放大后的横向平移滑块：拖 thumb 看放大片段的前后内容。左缩 track-offset 与波形轨道对齐 */
+  .pan{position:relative;height:12px;margin:10px 0 0 var(--track-offset);border-radius:99px;background:#221d19;display:none;cursor:pointer}
+  .pan.on{display:block}
+  .pan-thumb{position:absolute;top:0;bottom:0;background:var(--amber);opacity:.55;border-radius:99px;min-width:24px;cursor:grab}
+  .pan-thumb:hover{opacity:.8}
+  .pan-thumb:active{cursor:grabbing;opacity:.9}
+  /* 手机端（触摸）滑块加粗，方便手指选中；桌面保持纤细 */
+  @media (pointer:coarse){ .pan{height:20px} .seg-h{width:30px} .seg-h-l{left:-15px} .seg-h-r{right:-15px} }
+  .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-dim);font-size:14px;text-align:center;z-index:6}
+  /* 加载副提示：只在触屏设备（iPhone/iPad）显示，提醒用户点屏幕解锁 AudioContext；桌面不显示 */
+  .loading-tip{display:none;position:absolute;left:0;right:0;bottom:8px;text-align:center;color:var(--amber);font-size:12px;z-index:7;padding:0 12px;pointer-events:none}
+  @media (pointer:coarse){ .loading-tip.show{display:block} }
+  /* 每行 = 左侧喇叭开关（外部） + 右侧波形轨道 */
+  .lane-row{display:flex;align-items:stretch;gap:0}
+  .lane-row+.lane-row{margin-top:8px}
+  .spk{flex:none;width:var(--spk-w);display:grid;place-items:center;font-size:18px;cursor:pointer;border-radius:10px;background:var(--bg-elev);border:1px solid var(--line);margin-right:var(--spk-gap);color:var(--ink-dim);transition:.15s;user-select:none}
+  .spk:hover{border-color:#4a4038;color:var(--ink)}
+  .spk.on{color:var(--sel);border-color:var(--sel);background:var(--sel-soft)}
+  .lane{position:relative;flex:1;height:64px;border-radius:10px;overflow:hidden;cursor:crosshair;border:1px solid #3a332c;transition:opacity .2s,border-color .15s;background:#0f0c0a}
+  .lane:hover{border-color:#4a4038}
+  .lane.muted{opacity:.34}
+  .lane.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber)}
+  .lane-canvas{display:block;width:100%;height:100%}
+  .lane-ov{position:absolute;inset:0;pointer-events:none;z-index:5}
+  .lane-tag{position:absolute;left:10px;top:8px;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.03em;z-index:4;pointer-events:none;background:rgba(20,17,15,.72);padding:3px 8px;border-radius:6px;backdrop-filter:blur(2px)}
+  .lane-tag .sub{color:var(--ink-dim);font-weight:400;margin-left:6px;font-size:11px}
+  .stack-overlay{position:absolute;inset:0;pointer-events:none;z-index:5}
+  /* 打点游标：点波形落下，只为选打点位置，不影响播放 */
+  /* 打点预览区间：独立青柠色高亮块 + 左右可拖手柄（醒目、突出"正在选"），限 1~5 秒 */
+  .seg-sel{position:absolute;top:0;bottom:0;background:var(--pick-soft);border-left:2px solid var(--pick);border-right:2px solid var(--pick);box-shadow:0 0 14px -2px var(--pick),inset 0 0 20px -6px var(--pick);display:none;z-index:8;pointer-events:none}
+  .seg-sel.on{display:block}
+  .seg-h{position:absolute;top:0;bottom:0;width:20px;cursor:ew-resize;z-index:9;touch-action:none;pointer-events:auto}
+  .seg-h::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:6px;height:70%;background:var(--pick);border-radius:99px;box-shadow:0 0 8px var(--pick)}
+  .seg-h-l{left:-11px}.seg-h-r{right:-11px}
+  .seg-flag{position:absolute;top:2px;transform:translateX(2px);font-family:var(--mono);font-size:10px;font-weight:700;color:#1a2a00;background:var(--pick);padding:1px 5px;border-radius:4px;z-index:10;white-space:nowrap;box-shadow:0 0 8px -1px var(--pick)}
+  .seg-sel.editing{animation:segpulse .7s ease-in-out 3}
+  @keyframes segpulse{0%,100%{box-shadow:0 0 14px -2px var(--pick),inset 0 0 20px -6px var(--pick)}50%{box-shadow:0 0 26px 2px var(--pick),inset 0 0 26px -4px var(--pick)}}
+  /* 独立进度条：只控播放位置，不干涉选层。左缩 track-offset 使其左缘与波形轨道左缘对齐（默认1x时指针与圆圈同线）*/
+  .progress{position:relative;height:16px;margin:12px 0 16px var(--track-offset);cursor:pointer;display:flex;align-items:center}
+  .progress::before{content:'';position:absolute;left:0;right:0;height:5px;background:#2a231e;border-radius:99px;top:50%;transform:translateY(-50%)}
+  .progress-fill{position:absolute;left:0;height:5px;background:var(--coral);border-radius:99px;top:50%;transform:translateY(-50%);width:0}
+  .progress-knob{position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 6px #000a;left:0;transform:translateX(-50%);top:50%;margin-top:-7px}
+  .progress:hover .progress-knob{box-shadow:0 0 0 4px var(--coral-soft),0 1px 6px #000a}
+  /* 进度条上的"当前放大视窗"高亮框：让用户一眼看到正在放大整段的哪一块 */
+  .progress-view{position:absolute;top:50%;transform:translateY(-50%);height:14px;border:1.5px solid var(--amber);background:var(--amber);opacity:0;border-radius:4px;pointer-events:none;transition:opacity .2s;box-shadow:0 0 10px -2px var(--amber)}
+  .progress-view.on{opacity:.28}
+  /* 问号帮助按钮 + 悬停气泡 */
+  .help-btn{position:relative;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink-dim);font-family:var(--mono);font-weight:700;font-size:13px;cursor:pointer;align-self:center}
+  .help-btn:hover{border-color:var(--amber);color:var(--amber)}
+  .help-btn.open{border-color:var(--amber);color:var(--amber)}
+  .help-pop{position:absolute;bottom:130%;left:50%;transform:translateX(-50%);width:300px;background:#241f1b;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-family:var(--sans);font-weight:400;font-size:12.5px;line-height:1.7;color:var(--ink-dim);text-align:left;box-shadow:0 16px 40px -18px #000;opacity:0;visibility:hidden;transition:opacity .15s,visibility 0s .15s;z-index:20}
+  .help-pop b{color:var(--ink)}
+  /* 只用点击/tap 控制显隐（.open 类是唯一真相源）：桌面手机行为一致，点一下开、再点一下关，不再被 :hover 干扰 */
+  .help-btn.open .help-pop{opacity:1;visibility:visible;transition:opacity .15s,visibility 0s}
+  .hint-inline{font-size:12px;color:var(--ink-dim);align-self:center;font-style:italic;margin-left:auto}
+  .pt-marker{position:absolute;top:0;bottom:0;border-left:2px solid;border-right:2px solid;border-color:inherit;border-radius:3px}
+  .pt-flag{position:absolute;transform:translate(-50%,0);font-family:var(--mono);font-size:10px;font-weight:700;color:#1a0d08;padding:1px 5px;border-radius:4px;bottom:4px}
+  .modebar{margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-dim)}
+  .solo-note{font-family:var(--mono);font-size:11px;color:var(--teal)}
+  .add-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+  /* 缩放控件 */
+  /* 带边框的控件组：把"缩放"和"变速"各自框起来 + 加图标，避免两个都显示 ×倍数 时看混 */
+  .ctl-group{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:10px;padding:3px 7px;margin-left:4px}
+  .ctl-group .ctl-icon{font-size:12px;opacity:.6;line-height:1;user-select:none}
+  .ctl-group.on{border-color:var(--amber);background:#241b10;box-shadow:0 0 0 1px var(--amber) inset}
+  .zoom{display:flex;align-items:center;gap:6px}
+  .zoom-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink-dim);font-size:15px;font-weight:700;display:grid;place-items:center;line-height:1}
+  .zoom-btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}
+  .zoom-btn:disabled{opacity:.35;cursor:not-allowed}
+  .loop-btn{background:var(--bg-elev);border:1px solid var(--line);color:var(--ink-dim);font-size:12.5px;padding:6px 12px;border-radius:8px;white-space:nowrap;font-family:var(--sans)}
+  .loop-btn:hover:not(:disabled){border-color:var(--amber);color:var(--amber)}
+  .loop-btn:disabled{opacity:.35;cursor:not-allowed}
+  .loop-btn.on{background:#241b10;border-color:var(--amber);color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+  /* 变速下拉：慢放核对/反复听。边框和高亮由外层 .ctl-group 提供，这里只留下拉本体 */
+  .rate-select{background:var(--bg-elev);border:1px solid var(--line);color:var(--ink-dim);font-size:12.5px;padding:5px 7px;border-radius:7px;font-family:var(--mono);cursor:pointer}
+  .rate-select:hover{border-color:var(--amber);color:var(--amber)}
+  .rate-select:focus{outline:none;border-color:var(--amber)}
+  .rate-select:disabled{opacity:.35;cursor:not-allowed}
+  .zoom-lvl{font-family:var(--mono);font-size:11px;color:var(--ink-dim);min-width:34px;text-align:center}
+  .structure{margin-top:26px}
+  .structure-head{display:flex;align-items:baseline;gap:12px;margin-bottom:14px}
+  .structure-head h2{font-family:var(--display);font-weight:600;font-size:20px}
+  .structure-head .sub{color:var(--ink-dim);font-size:13px}
+  .structure-head .clear{margin-left:auto}
+  .clear-btn{background:none;border:1px solid var(--line);color:var(--ink-dim);font-size:12px;font-family:var(--sans);cursor:pointer;padding:5px 12px;border-radius:8px}
+  .clear-btn:hover{border-color:var(--coral);color:var(--coral)}
+  .seg-card{background:var(--bg-panel);border:1px solid var(--line);border-left:3px solid var(--teal);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .seg-card .seg-title{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .seg-card .seg-title .name{font-family:var(--display);font-weight:600;font-size:16px;color:var(--teal)}
+  .seg-card .seg-title .range{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
+  .seg-card .no-pt{color:#6f6357;font-size:13px;font-style:italic}
+  .pt-item{display:flex;align-items:center;flex-wrap:wrap;row-gap:8px;gap:10px;padding:8px;border-radius:9px;margin-bottom:6px;background:#191512}
+  .pt-item .pt-time{font-family:var(--mono);font-size:12px;color:var(--ink-dim);flex:none;width:50px;cursor:pointer}
+  .pt-item .pt-time:hover{color:var(--ink)}
+  .layer-badge{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;flex:none}
+  /* 便签：默认是一个带文字的小按钮（醒目、好找），点开才出现输入框（不逼用户写字） */
+  /* 便签按钮（第2行整行）：默认虚线小按钮，有内容时用与提示框同款的常规字体/颜色，不再是刺眼琥珀斜体 */
+  .note-toggle{order:2;flex-basis:100%;align-self:flex-start;display:inline-flex;align-items:center;gap:5px;min-height:28px;padding:5px 11px;border-radius:8px;border:1px dashed #4a4038;background:var(--bg-elev);color:var(--ink-dim);font-family:var(--sans);font-size:13px;line-height:1.5;cursor:pointer;text-align:left;white-space:normal;max-width:100%}
+  .note-toggle:hover{border-color:var(--amber);color:var(--ink)}
+  .note-toggle.has{color:var(--ink-dim);border-color:#3a332c;border-style:solid;background:#191512;font-style:normal}
+  .pt-note-wrap{order:2;flex-basis:100%;margin-top:8px;display:none}
+  .pt-item.note-open .pt-note-wrap{display:block}
+  .pt-note-hint{font-size:11px;color:#6f6357;margin-bottom:4px;font-style:italic}
+  .pt-note{width:100%;background:transparent;border:none;border-bottom:1px dashed #3a322b;color:var(--ink);font-family:var(--sans);font-size:14px;padding:5px 2px}
+  .pt-note:focus{outline:none;border-bottom-color:var(--coral)}
+  .pt-note::placeholder{color:#5f544a}
+  /* 删除：第1行右侧（order:1，margin-left:auto 推到最右）*/
+  .pt-del{order:1;background:none;border:1px solid var(--line);color:var(--ink-dim);cursor:pointer;font-size:11.5px;flex:none;padding:3px 8px;border-radius:7px;margin-left:auto}
+  .pt-del:hover{color:var(--coral);border-color:var(--coral)}
+  /* 修改片段：第3行（前面的便签按钮 order:2 占满第2行，把它自然挤到新行），保持自然宽度靠左 */
+  .pt-edit{order:3;flex:none;align-self:flex-start;background:none;border:1px solid var(--line);color:var(--ink-dim);cursor:pointer;font-size:11.5px;padding:5px 10px;border-radius:7px;margin-top:2px}
+  .pt-edit:hover{border-color:var(--amber);color:var(--amber)}
+  .cut-note{margin-top:34px;border-top:1px dashed var(--line);padding-top:20px;color:var(--ink-dim);font-size:13px;line-height:1.7}
+  .cut-note h3{font-family:var(--display);font-weight:600;color:var(--ink);font-size:15px;margin-bottom:8px}
+  .cut-note code{font-family:var(--mono);font-size:12px;color:var(--amber);background:#241b10;padding:2px 6px;border-radius:5px}
+  .cut-note .cut{color:#8a7d70}
+  .cut-note strong{color:var(--ink)}
+  .disclaim{font-family:var(--mono);font-size:11px;color:#6f6357;margin-top:10px}
+  /* 通用确认弹窗：用于"取消选中"等易误触且破坏性的操作 */
+  .modal-mask{position:fixed;inset:0;background:#0b0908cc;backdrop-filter:blur(3px);display:none;place-items:center;z-index:50}
+  .modal-mask.on{display:grid}
+  .modal{background:var(--bg-panel);border:1px solid var(--line);border-radius:14px;padding:22px 24px 18px;width:min(340px,86vw);box-shadow:0 30px 70px -20px #000;text-align:center}
+  .modal .m-title{font-family:var(--display);font-weight:600;font-size:17px;color:var(--ink);margin-bottom:6px}
+  .modal .m-sub{font-size:13px;color:var(--ink-dim);margin-bottom:18px;line-height:1.6}
+  .modal .m-btns{display:flex;gap:10px;justify-content:center}
+  .modal .m-btn{flex:1;padding:10px 0;border-radius:10px;font-size:14px;font-weight:600;border:1px solid var(--line);cursor:pointer;transition:.15s}
+  /* 危险确认("是，取消")用灰色：不诱导误点；"否，返回"用主色橙：引导用户留在安全侧 */
+  .modal .m-yes{background:var(--bg-elev);color:var(--ink-dim);border-color:var(--line)}
+  .modal .m-yes:hover{background:#2b2521;color:var(--ink);border-color:#4a4038}
+  .modal .m-no{background:var(--coral);color:#1a0d08;border-color:var(--coral)}
+  .modal .m-no:hover{background:#ff7357}
+
+  /* ============ 手机端适配（窄屏 ≤480px）============ */
+  @media (max-width:480px){
+    body{padding:16px 12px 48px}
+    /* 灵感点三行布局已在基础规则里（order+flex-basis），此处只放大触摸元素 */
+    .pt-item .pt-time{width:auto}
+    /* 缩放 +/- 和帮助 ? 加大到易点尺寸（≥36px）*/
+    .zoom-btn{width:38px;height:34px;font-size:18px}
+    .help-btn{width:38px;height:34px;border-radius:10px;font-size:15px}
+    /* 帮助气泡在窄屏里限制宽度、避免溢出 */
+    .help-pop{width:min(280px,80vw)}
+    /* 歌名下拉不挤：占满整行 */
+    .song-select{max-width:100%;flex:1 1 100%;margin-left:0}
+    /* 标记按钮更大更好点 */
+    .btn.pt{padding:11px 16px;font-size:15px}
+    /* 进度条手机端加高，圆球加大，方便手指按住拖 */
+    .progress{height:26px}
+    .progress-knob{width:20px;height:20px;margin-top:-10px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1><span class="accent">Choreo</span>Assist</h1>
+      <div class="tag">分段听歌，标记灵感</div>
+    </div>
+    <div class="badge">Demo · AI 分离版</div>
+  </header>
+
+  <div class="console">
+    <div class="transport">
+      <button class="play" id="playBtn" disabled title="播放/暂停">▶</button>
+      <div class="time"><b id="cur">0:00.0</b> / <span id="dur">0:00.0</span></div>
+      <div class="ctl-group" id="zoomGroup" title="放大波形：方便把灵感点标得更准">
+        <span class="ctl-icon">🔍</span>
+        <div class="zoom" id="zoom">
+          <button class="zoom-btn" id="zoomOut" title="缩小" disabled>－</button>
+          <span class="zoom-lvl" id="zoomLvl">1.0×</span>
+          <button class="zoom-btn" id="zoomIn" title="放大波形，方便标得更准" disabled>＋</button>
+        </div>
+      </div>
+      <div class="ctl-group" id="rateGroup" title="变速播放：放慢方便反复听、跟练">
+        <span class="ctl-icon">⏩</span>
+        <select class="rate-select" id="rateSelect" disabled>
+          <option value="0.8">0.8×</option>
+          <option value="0.9">0.9×</option>
+          <option value="1" selected>1.0×</option>
+          <option value="2">2.0×</option>
+        </select>
+      </div>
+      <button class="loop-btn" id="loopBtn" title="放大后可开启：循环播放当前视窗（AB段循环）" disabled>🔁 循环视窗</button>
+      <button class="loop-btn" id="beatBtn" title="显示每个八拍的 1-8 计数（适合教学/数拍；不影响编排，可随时关）" disabled>🎼 八拍显示</button>
+      <select class="song-select" id="songSelect" title="切换歌曲"></select>
+    </div>
+
+    <div class="progress" id="progress" title="拖动调整播放位置">
+      <div class="progress-view" id="progressView"></div>
+      <div class="progress-fill" id="progressFill"></div>
+      <div class="progress-knob" id="progressKnob"></div>
+    </div>
+
+    <div class="layers" id="layers">
+      <div class="loading" id="loading">正在载入 AI 分离的四条音轨…</div>
+      <div class="loading-tip" id="loadingTip">📱 打不开？先点一下屏幕再稍等（iPhone/iPad 需要）</div>
+    </div>
+
+    <!-- 放大后出现：横向平移滑块，拖它看放大片段的前后内容 -->
+    <div class="pan" id="pan"><div class="pan-thumb" id="panThumb"></div></div>
+
+    <div class="modebar" id="modebar"></div>
+
+    <div class="add-row">
+      <button class="btn pt" id="ptBtn" disabled>◆ 确定标记</button>
+      <button class="help-btn" id="helpBtn" aria-label="操作说明">?
+        <div class="help-pop">
+          <b>怎么用？</b><br>
+          · <b>选择灵感点/段落</b>：停在你有灵感的某处（任意层次），点击选中灵感点（初始默认 1 秒，可拖两端手柄调整长短）。<br>
+          · <b>记录选中灵感</b>：确认灵感点/段落后，点「确定标记」记录；你可以在记录里补充一句对它的感觉。<br>
+          · <b>修改灵感点/段落长度</b>：点「修改片段」调整。<br>
+          · <b>删除灵感点/段落</b>：点「删除」。
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <div class="structure">
+    <div class="structure-head">
+      <h2>我的灵感点</h2>
+      <button class="clear-btn" id="clearBtn">↺ 清空标记</button>
+    </div>
+    <div id="structure"></div>
+  </div>
+</div>
+
+<!-- 通用确认弹窗（取消选中等易误触操作）-->
+<div class="modal-mask" id="confirmMask">
+  <div class="modal">
+    <div class="m-title" id="confirmTitle">是否确定取消选中</div>
+    <div class="m-sub" id="confirmSub"></div>
+    <div class="m-btns">
+      <button class="m-btn m-yes" id="confirmYes">是</button>
+      <button class="m-btn m-no" id="confirmNo">否</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const LSKEY = 'choreo_demo_stems_v3';   // v3：改为多首歌，灵感点按歌分开存
+  // 成品歌单：每首指向一个已用 Demucs 分好四轨的目录。新增歌只需分离后在此加一行。
+  const SONGS = [
+    { id:'lwymmd',     title:'Look What You Made Me Do', artist:'Taylor Swift', dir:'stems_lwymmd/' },
+    { id:'itsme',      title:"It's me",                 artist:'ILLIT',        dir:'stems_itsme/' },
+    { id:'mojito',     title:'Mojito',                  artist:'周杰伦',        dir:'stems_mojito/' },
+    { id:'hip',        title:'HIP',                     artist:'MAMAMOO',      dir:'stems_hip/' },
+    { id:'armageddon', title:'Armageddon',              artist:'aespa',        dir:'stems_armageddon/' },
+  ];
+  let songId = SONGS[0].id;
+  const curSong = () => SONGS.find(s=>s.id===songId) || SONGS[0];
+  const STEM_DIR = () => curSong().dir;
+
+  const LAYERS = [
+    {id:'vocals', file:'vocals.m4a', name:'人声 / 歌词', sub:'vocals', color:'#ff8fa3', soft:'#ff8fa31f'},
+    {id:'drums',  file:'drums.m4a',  name:'鼓 / 节奏',   sub:'drums',  color:'#ffb443', soft:'#ffb44322'},
+    {id:'bass',   file:'bass.m4a',   name:'贝斯 / 低音', sub:'bass',   color:'#5ad1c4', soft:'#5ad1c41f'},
+    {id:'other',  file:'other.m4a',  name:'旋律 / 其他', sub:'synth·keys', color:'#c9a3ff', soft:'#c9a3ff1f'},
+  ];
+  const layerOf = id => LAYERS.find(l=>l.id===id);
+
+  let state = { duration:0, activeLayer:'vocals', points:[], mute:{} };
+  // points:[{id,t,layerId,note}]；mute:{layerId:true}
+  // 视图窗口（缩放）：只影响"看到的时间范围"，不影响播放、不动数据
+  let view = { start:0, end:0 };   // 秒；end=0 表示未初始化（=整段）
+  let zoom = 1;                    // 缩放倍数，1=整段铺满
+  let zoomHintTxt = '';            // 缩放提示文案（常驻，renderModebar 时回填）
+  let editing = false;             // 是否处于"改片段"态（modebar 给醒目提示）
+  let editingNote = '';            // 改片段时暂存原便签，"确认修改"后带回，避免只改长短却丢了记的一句
+  let suppressClick = false;       // 拖完手柄后抑制紧随的 lane click，防止误重置选段
+  let loopView = false;            // 是否开启"循环当前放大视窗"（AB段循环）；只在放大时可用
+  let showBeats = false;           // 是否显示八拍标尺（可选叠加层，教学/数拍用，不影响编排）
+  let beatData = null;             // 当前歌的拍点数据 {bpm,beats:[t...],nums:[1..8...],measures}
+  // 八拍对齐版本（A/B 盲测）：URL ?beat=auto 用自动版，默认 manual（人工锚点版）。用户端只看到"版本"、看不到差别来源。
+  const BEAT_VARIANT = (new URLSearchParams(location.search).get('beat')==='auto') ? 'auto' : 'manual';
+  // ---- Web Audio 混音引擎：四轨解码进内存，同一 ctx 同一起点播放，天然同步、不卡 ----
+  let actx=null;
+  let buffers={};        // {id: AudioBuffer}
+  let gains={};          // {id: GainNode}
+  let sources={};        // {id: AudioBufferSourceNode}（每次播放/ seek 重建）
+  let peaks = {};        // {id: Float32Array}
+  let playing=false, startCtxTime=0, startOffset=0;   // 用 ctx.currentTime 推算播放进度
+  let rate=1;            // 播放速率（0.8/0.9/1/2）。=1 走原生 BufferSource；≠1 走 SoundTouch 保音高变速
+  let stFilters={};      // {id: SimpleFilter}  SoundTouch 变速管线（仅 rate≠1 时用）；进度由它的 sourcePosition 反推
+  let cursorT=null;   // 打点游标"起点"（秒），null=未落游标；配合 cursorEnd 表示一个 1~5s 的预览片段
+  let cursorEnd=null; // 打点游标"终点"（秒）
+  const SEG_MIN=1, SEG_MAX=5;   // 高光片段时长限制：1个8拍量级，1~5秒（中速歌≈1个8拍）
+  let raf=null, ready=false;
+
+  const els = {
+    playBtn:$('#playBtn'), cur:$('#cur'), dur:$('#dur'), songSelect:$('#songSelect'),
+    layers:$('#layers'), loading:$('#loading'), loadingTip:$('#loadingTip'),
+    modebar:$('#modebar'), ptBtn:$('#ptBtn'),
+    structure:$('#structure'), clearBtn:$('#clearBtn'),
+    progress:$('#progress'), progressFill:$('#progressFill'), progressKnob:$('#progressKnob'), progressView:$('#progressView'),
+    zoomIn:$('#zoomIn'), zoomOut:$('#zoomOut'), zoomLvl:$('#zoomLvl'),
+    pan:$('#pan'), panThumb:$('#panThumb'), loopBtn:$('#loopBtn'), beatBtn:$('#beatBtn'), rateSelect:$('#rateSelect'), rateGroup:$('#rateGroup'),
+    confirmMask:$('#confirmMask'), confirmTitle:$('#confirmTitle'), confirmSub:$('#confirmSub'), confirmYes:$('#confirmYes'), confirmNo:$('#confirmNo')
+  };
+  const fmt = s => { if(!isFinite(s)) s=0; const m=Math.floor(s/60); return m+':'+(s%60).toFixed(1).padStart(4,'0'); };
+  // 通用确认弹窗：返回 Promise<boolean>。yes(灰)=确认破坏性操作，no(橙)=返回安全侧
+  function askConfirm(title, sub){
+    return new Promise(resolve=>{
+      els.confirmTitle.textContent=title||'是否确定取消选中';
+      els.confirmSub.textContent=sub||'';
+      els.confirmMask.classList.add('on');
+      const done=(v)=>{ els.confirmMask.classList.remove('on'); els.confirmYes.onclick=null; els.confirmNo.onclick=null; els.confirmMask.onclick=null; document.removeEventListener('keydown',onKey); resolve(v); };
+      els.confirmYes.onclick=()=>done(true);
+      els.confirmNo.onclick=()=>done(false);
+      els.confirmMask.onclick=(e)=>{ if(e.target===els.confirmMask) done(false); };   // 点遮罩空白=否(安全)
+      const onKey=(e)=>{ if(e.key==='Escape') done(false); else if(e.key==='Enter') done(true); };
+      document.addEventListener('keydown',onKey);
+      els.confirmNo.focus();
+    });
+  }
+  const viewLen = () => (view.end>view.start) ? (view.end-view.start) : state.duration;
+  // pct：把某个时刻换算成"当前视窗内"的百分比位置（可能<0或>100，即在窗口外）
+  const pct = t => ((t-view.start)/viewLen())*100;
+  // 进度条/播放的参照范围：开循环时=当前放大视窗[view]，否则=整首[0,duration]
+  const rangeLo = () => (loopView ? view.start : 0);
+  const rangeHi = () => (loopView ? view.end : state.duration);
+  const rangeLen = () => Math.max(0.01, rangeHi()-rangeLo());
+  // 当前播放进度（秒）。用墙钟推算保证显示连续丝滑（rate 倍速流逝）；
+  // SoundTouch 的 sourcePosition 是每 4096 帧才跳一次的离散值，只用于 seek/换挡时校准，不用于逐帧显示。
+  function now(){
+    if(!playing) return startOffset;
+    return Math.min(state.duration, startOffset + (actx.currentTime - startCtxTime)*rate);
+  }
+
+  // 灵感点/独奏状态按歌分开存：{ [songId]: {activeLayer,points,mute} }
+  function readStore(){ try{ return JSON.parse(localStorage.getItem(LSKEY)||'{}')||{}; }catch(e){ return {}; } }
+  function save(){ const all=readStore(); all[songId]={activeLayer:state.activeLayer,points:state.points,mute:state.mute}; localStorage.setItem(LSKEY, JSON.stringify(all)); }
+  function load(){ const d=readStore()[songId]; if(d){ state.activeLayer=d.activeLayer||'vocals'; state.points=d.points||[]; state.mute=d.mute||{}; } else { state.activeLayer='vocals'; state.points=[]; state.mute={}; } }
+
+  // ---------- load 4 tracks (decode to buffer + gain 混音图) ----------
+  async function init(){
+    const AC = window.AudioContext||window.webkitAudioContext;
+    actx = new AC();
+    // 自动播放策略会把"未经用户手势创建的 AudioContext"置为 suspended，
+    // 而 suspended 下 decodeAudioData 在部分浏览器（手机/Safari）会一直不返回 → 卡在"正在载入"。
+    // 兜底：监听文档首次手势，自动 resume；解锁后自解绑。
+    const unlock=()=>{ if(actx && actx.state==='suspended'){ actx.resume().catch(()=>{}); }
+      if(els.loadingTip) els.loadingTip.classList.remove('show');   // 用户已点屏幕解锁，撤下提示
+      ['pointerdown','touchstart','keydown','click'].forEach(ev=>document.removeEventListener(ev,unlock)); };
+    ['pointerdown','touchstart','keydown','click'].forEach(ev=>document.addEventListener(ev,unlock,{once:false}));
+    buildSongSelect();
+    await loadSong(songId);
+  }
+  // 加载/切换一首歌：停播、清空旧 buffer、解码当前歌四轨、重置视窗与缩放
+  async function loadSong(id){
+    if(!SONGS.some(s=>s.id===id)) id=SONGS[0].id;
+    songId=id; els.songSelect.value=id;
+    // 停止并清空上一首的音频与状态
+    if(playing){ try{stopSources();}catch(e){} }
+    playing=false; startOffset=0; if(raf) cancelAnimationFrame(raf);
+    buffers={}; peaks={}; gains={}; sources={};
+    state.duration=0; zoom=1; loopView=false; cursorT=null; cursorEnd=null; editing=false;
+    beatData=null; showBeats=false; els.beatBtn.classList.remove('on');   // 切歌重置八拍开关
+    if(els.beatBtn) els.beatBtn.disabled=true;
+    rate=1; els.rateSelect.value='1'; els.rateGroup.classList.remove('on'); els.rateSelect.disabled=true;   // 切歌复位变速
+    fetch('beats/'+BEAT_VARIANT+'/beats_'+id+'.json').then(r=>r.ok?r.json():null).then(d=>{ beatData=d; if(d) els.beatBtn.disabled=false; paintBeats(); }).catch(()=>{ beatData=null; });
+    load();                                   // 读这首歌自己的灵感点/独奏
+    ready=false;
+    els.playBtn.disabled=true; els.zoomIn.disabled=true; els.zoomOut.disabled=true; els.loopBtn.disabled=true; els.loopBtn.classList.remove('on');
+    els.loading.style.display='grid'; els.loading.textContent='正在载入 AI 分离的四条音轨…';
+    els.loadingTip.classList.add('show');   // 触屏设备加载时显示"点屏幕解锁"提示（CSS 只在 pointer:coarse 生效）
+    els.zoomLvl.textContent='1.0×';
+    const dir=STEM_DIR();
+    // 解码兼容封装：老 Safari 的 decodeAudioData 只支持 callback（不返回 Promise），
+    // 且 suspended 下可能不返回 → 用 Promise 包一层 + 超时兜底，避免无限卡"正在载入"。
+    const decode=(arrbuf)=>new Promise((resolve,reject)=>{
+      let done=false;
+      const to=setTimeout(()=>{ if(!done){ done=true; reject(new Error('decode timeout')); } }, 20000);
+      try{
+        const p=actx.decodeAudioData(arrbuf, b=>{ if(!done){done=true;clearTimeout(to);resolve(b);} },
+                                              e=>{ if(!done){done=true;clearTimeout(to);reject(e||new Error('decode error'));} });
+        if(p&&p.then) p.then(b=>{ if(!done){done=true;clearTimeout(to);resolve(b);} },
+                              e=>{ if(!done){done=true;clearTimeout(to);reject(e);} });
+      }catch(e){ if(!done){done=true;clearTimeout(to);reject(e);} }
+    });
+    if(actx.state==='suspended'){ try{ await actx.resume(); }catch(e){} }   // 解码前先尝试恢复
+    let loaded=0, failed=0;
+    // 四条并行下载+解码（原来是串行，四条时间相加；并行后总耗时≈最慢那条，弱网下明显更快）
+    await Promise.all(LAYERS.map(async L=>{
+      try{
+        const resp = await fetch(dir+L.file);
+        const buf = await decode(await resp.arrayBuffer());
+        buffers[L.id]=buf;
+        peaks[L.id]=computePeaks(buf,800);
+        if(buf.duration>state.duration) state.duration=buf.duration;
+        const g=actx.createGain(); g.gain.value = state.mute[L.id]?0:1; g.connect(actx.destination); gains[L.id]=g;
+      }catch(e){ failed++; console.warn('decode fail',L.id,e); }
+      loaded++; els.loading.textContent=`正在载入 AI 分离的四条音轨… (${loaded}/4)`;
+    }));
+    if(failed===LAYERS.length){   // 四条全失败：别停在"正在载入"，给出可操作提示
+      els.loading.textContent='音频加载失败，请点一下页面再刷新试试（或换 Chrome 打开）';
+      return;
+    }
+    ready=true;
+    view.start=0; view.end=state.duration;   // 初始视窗=整段
+    els.loading.style.display='none';
+    els.loadingTip.classList.remove('show');   // 加载完成，撤下提示
+    els.cur.textContent=fmt(0);
+    els.dur.textContent=fmt(state.duration);
+    els.playBtn.disabled=false;
+    els.zoomIn.disabled=false; els.zoomOut.disabled=true;
+    els.rateSelect.disabled=false;   // 载入完成即可变速（任何缩放/播放态都能用）
+    els.beatBtn.disabled = !beatData;   // 有拍点数据才可开八拍（异步到达时 fetch 回调里也会再 enable 一次）
+    // 进度条归零：切歌后播放位置回到开头，进度条 fill/knob 也要跟着回到最左（否则会停在上一首的位置）
+    els.progressFill.style.width='0%'; els.progressKnob.style.left='0%';
+    buildLanes(); renderMarks(); renderStructure(); renderModebar(); refreshPtBtn(); updateSteps(); paintViewBox();
+  }
+  // 歌曲下拉：只有一首也显示当前曲目名；切歌时确认丢弃当前未确认选段
+  function buildSongSelect(){
+    els.songSelect.innerHTML = SONGS.map(s=>`<option value="${s.id}">${s.title} · ${s.artist}</option>`).join('');
+    els.songSelect.value=songId;
+    els.songSelect.onchange=()=>{
+      const next=els.songSelect.value;
+      if(next===songId){ return; }
+      loadSong(next);
+    };
+  }
+
+  function computePeaks(buf,n){
+    const ch=buf.getChannelData(0); const block=Math.floor(ch.length/n); const out=new Float32Array(n);
+    let gmax=1e-6;
+    for(let i=0;i<n;i++){ let mx=0; for(let j=0;j<block;j++){ const v=Math.abs(ch[i*block+j]||0); if(v>mx)mx=v; } out[i]=mx; if(mx>gmax)gmax=mx; }
+    for(let i=0;i<n;i++) out[i]=Math.pow(out[i]/gmax,0.8);
+    return out;
+  }
+
+  // ---------- lanes ----------
+  function buildLanes(){
+    [...els.layers.querySelectorAll('.lane-row')].forEach(n=>n.remove());
+    LAYERS.forEach(L=>{
+      const on = !state.mute[L.id];
+      const sel = state.activeLayer===L.id;
+      const row=document.createElement('div'); row.className='lane-row'; row.dataset.layer=L.id;
+      row.style.setProperty('--sel',L.color); row.style.setProperty('--sel-soft',L.soft);
+      // 左侧外部喇叭：点它开/关这条轨播放
+      const spk=document.createElement('div'); spk.className='spk'+(on?' on':''); spk.textContent = on?'🔊':'🔇'; spk.title='开/关这条音轨';
+      spk.onclick=(e)=>{ e.stopPropagation(); state.mute[L.id]=!state.mute[L.id]; applyMute(); buildLanes(); save(); };
+      // 右侧波形轨道：点它=选中该轨(边框黄)+落打点游标
+      const lane=document.createElement('div'); lane.className='lane'+(on?'':' muted')+(sel?' sel':''); lane.dataset.layer=L.id;
+      lane.innerHTML=`<div class="lane-tag" style="color:${L.color}">${L.name}<span class="sub">${L.sub}</span></div>
+        <canvas class="lane-canvas"></canvas>
+        <div class="lane-ov">
+          <div class="seg-sel"><div class="seg-h seg-h-l" data-side="l"></div><div class="seg-h seg-h-r" data-side="r"></div></div>
+        </div>`;
+      lane.onclick=(ev)=>{
+        if(ev.target.classList.contains('seg-h')) return;   // 点在手柄上不重置
+        if(suppressClick){ suppressClick=false; return; }    // 刚拖完手柄，抑制这次误触
+        state.activeLayer=L.id;                       // 选中该轨（打点绑定它、边框变黄）
+        const r=lane.getBoundingClientRect(); const p=(ev.clientX-r.left)/r.width;
+        const start=Math.max(0,Math.min(state.duration, view.start + p*viewLen()));   // 相对视窗换算回真实秒
+        cursorT=start; cursorEnd=Math.min(state.duration, Math.max(start+SEG_MIN, SEG_MIN));   // 默认选中 1 秒片段
+        if(cursorEnd>state.duration){cursorEnd=state.duration;cursorT=Math.max(0,cursorEnd-SEG_MIN);}
+        buildLanes(); renderMarks(); renderModebar(); refreshPtBtn(); updateSteps(); save();
+      };
+      // 左右手柄拖动：调整预览片段的起止（限 1~5 秒），鼠标+触摸通用
+      lane.querySelectorAll('.seg-h').forEach(h=>{
+        const down=(e)=>{
+          if(cursorT==null||state.activeLayer!==L.id) return;
+          e.preventDefault(); e.stopPropagation();
+          const side=h.dataset.side, r=lane.getBoundingClientRect();
+          const move=(ev)=>{
+            if(ev.cancelable) ev.preventDefault();       // 拖动中禁止文本选中/页面滚动，鼠标甩出段外也不丢选中
+            const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
+            const p=Math.max(0,Math.min(1,(cx-r.left)/r.width));
+            const t=view.start+p*viewLen();
+            if(side==='l'){ cursorT=Math.max(0, Math.min(t, cursorEnd-SEG_MIN)); if(cursorEnd-cursorT>SEG_MAX) cursorT=cursorEnd-SEG_MAX; }
+            else { cursorEnd=Math.min(state.duration, Math.max(t, cursorT+SEG_MIN)); if(cursorEnd-cursorT>SEG_MAX) cursorEnd=cursorT+SEG_MAX; }
+            renderMarks();
+          };
+          const up=()=>{ suppressClick=true; setTimeout(()=>{suppressClick=false;},260); save(); document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up); };
+          document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+          document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+        };
+        h.addEventListener('mousedown',down); h.addEventListener('touchstart',down,{passive:false});
+      });
+      row.append(spk,lane); els.layers.appendChild(row);
+    });
+    // 贯穿四轨的播放指针（一条长竖线，覆盖在所有轨道之上，比每轨各画一条更美观）
+    let ph=els.layers.querySelector('#globalPlayhead');
+    if(!ph){ ph=document.createElement('div'); ph.id='globalPlayhead'; ph.className='global-playhead'; els.layers.appendChild(ph); }
+    drawAll(); renderMarks(); paintPlayhead(); paintBeats();
+  }
+  function drawAll(){
+    els.layers.querySelectorAll('.lane').forEach(lane=>{
+      const L=layerOf(lane.dataset.layer), cv=lane.querySelector('.lane-canvas');
+      const dpr=window.devicePixelRatio||1, w=lane.clientWidth, h=lane.clientHeight;
+      cv.width=w*dpr; cv.height=h*dpr; const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,w,h);
+      const pk=peaks[L.id]; if(!pk) return;
+      const on=!state.mute[L.id], mid=h/2;
+      // 只取视窗 [view.start,view.end] 对应的峰值区间，铺满整宽 = 放大
+      const N=pk.length;
+      const i0=Math.floor(view.start/state.duration*N), i1=Math.ceil(view.end/state.duration*N);
+      const seg=Math.max(1,i1-i0), bw=w/seg;
+      c.fillStyle = on ? L.color : '#4a423a80';        // 播放前后不做明暗差，整轨统一色，进度只由贯穿指针体现
+      for(let k=0;k<seg;k++){
+        const i=i0+k; if(i<0||i>=N) continue;
+        const x=k*bw, bh=Math.max(1,pk[i]*(h*0.44));
+        c.fillRect(x,mid-bh,Math.max(1,bw*0.7),bh*2);
+      }
+    });
+  }
+  function hexA(hex,a){const n=parseInt(hex.slice(1),16);return`rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+
+  // ---------- solo/mute（真独奏：调各轨 gain）----------
+  function applyMute(){ LAYERS.forEach(L=>{ if(gains[L.id]) gains[L.id].gain.value = state.mute[L.id]?0:1; }); }
+  function soloLayer(id){ LAYERS.forEach(L=>{ state.mute[L.id]=(L.id!==id); }); applyMute(); buildLanes(); renderModebar(); save(); }
+  function unmuteAll(){ state.mute={}; applyMute(); buildLanes(); renderModebar(); save(); }
+
+  function renderModebar(){
+    const L=layerOf(state.activeLayer);
+    const editTip = editing ? `<span style="color:var(--pick);font-weight:700">✎ 正在修改此片段 —— 拖手柄调整长短后，点「确认修改」保存</span>　` : '';
+    els.modebar.innerHTML=`${editTip}<span style="color:${L.color}">◆ 打点将绑定「${L.name}」</span>（在波形上选中一段，拖两端手柄调整长短；片段过窄不易拖动时，可先按 ＋ 放大）
+      <button class="btn" id="allBtn" style="padding:5px 11px;font-size:12px;margin-left:6px">↺ 全部一起听</button>
+      <span class="solo-note" id="zoomHint">${zoomHintTxt||''}</span>`;
+    $('#allBtn').onclick=()=>unmuteAll();
+  }
+
+  // ---------- marks：把 播放头/高光区间/打点预览 画进每条 lane 的 overlay ----------
+  const segStart=p=> (p.start!=null?p.start:p.t);          // 兼容旧的单点 {t}
+  const segEnd  =p=> (p.end!=null?p.end:(p.start!=null?p.start:p.t)+SEG_MIN);
+  function renderMarks(){
+    if(!state.duration) return;
+    const overlap=(a,b)=> a<=view.end+1e-6 && b>=view.start-1e-6;   // 区间与视窗有交集就画
+    els.layers.querySelectorAll('.lane').forEach(lane=>{
+      const ov=lane.querySelector('.lane-ov'); if(!ov) return;
+      const laneId=lane.dataset.layer;
+      [...ov.querySelectorAll('.pt-marker,.pt-flag')].forEach(n=>n.remove());
+      // 高光区间：只画在它自己所属的那条轨、且和视窗有交集
+      state.points.filter(p=>p.layerId===laneId && overlap(segStart(p),segEnd(p))).forEach(p=>{
+        const PL=layerOf(p.layerId)||LAYERS[0];
+        const a=pct(segStart(p)), b=pct(segEnd(p));
+        const m=document.createElement('div');m.className='pt-marker';
+        m.style.left=a+'%'; m.style.width=Math.max(0.6,b-a)+'%'; m.style.background=hexA(PL.color,.30); m.style.borderColor=PL.color;
+        ov.appendChild(m);
+        const f=document.createElement('div');f.className='pt-flag';f.style.left=a+'%';f.style.background=PL.color;f.textContent='◆';ov.appendChild(f);
+      });
+      // 打点预览区间只画在"选中的那条轨"上
+      const seg=ov.querySelector('.seg-sel');
+      if(cursorT!=null && laneId===state.activeLayer && overlap(cursorT,cursorEnd)){
+        seg.classList.add('on');
+        const a=pct(cursorT), b=pct(cursorEnd);
+        seg.style.left=a+'%'; seg.style.width=Math.max(0.3,b-a)+'%';   // 严格按真实时长，随缩放同步变化
+        let fl=seg.querySelector('.seg-flag'); if(!fl){fl=document.createElement('div');fl.className='seg-flag';seg.appendChild(fl);}
+        fl.textContent='◆ '+((cursorEnd-cursorT).toFixed(1))+'s';
+      }else if(seg){ seg.classList.remove('on'); }
+    });
+  }
+
+  // ---------- structure：一个按时间排序的灵感点列表（不再分段） ----------
+  function renderStructure(){
+    if(!state.duration){els.structure.innerHTML='';return;}
+    els.structure.innerHTML='';
+    if(!state.points.length){
+      const e=document.createElement('div');e.className='seg-card';
+      e.innerHTML='<div class="no-pt">暂无灵感点 —— 在某一层波形上选中一段，再点「确定标记」即可记录。</div>';
+      els.structure.appendChild(e); return;
+    }
+    const card=document.createElement('div');card.className='seg-card';card.style.borderLeftColor='var(--coral)';
+    state.points.slice().sort((a,b)=>segStart(a)-segStart(b)).forEach(p=>card.appendChild(ptRow(p)));
+    els.structure.appendChild(card);
+  }
+  function ptRow(p){
+    const L=layerOf(p.layerId)||LAYERS[0];
+    const s=segStart(p), e=segEnd(p), dur=(e-s).toFixed(1);
+    const row=document.createElement('div');row.className='pt-item';
+    const t=document.createElement('span');t.className='pt-time';t.textContent=fmt(s)+' · '+dur+'s';t.title='跳到这段开头';t.onclick=()=>seek(s);
+    const badge=document.createElement('span');badge.className='layer-badge';badge.style.color=L.color;badge.style.background=L.soft;badge.textContent=L.name;
+    // 删除：放第一行右侧（破坏性操作，与中间的编辑区隔开，降低误触代价）
+    const del=document.createElement('button');del.className='pt-del';del.innerHTML='🗑 删除';del.title='删除这个灵感点';del.onclick=()=>{state.points=state.points.filter(x=>x.id!==p.id);save();renderStructure();renderMarks();updateSteps();};
+    // 修改片段：放第三行（底部），误触它损失比误触删除小
+    const edit=document.createElement('button');edit.className='pt-edit';edit.textContent='↕ 修改片段';edit.title='重新拖两端调整这一段';
+    edit.onclick=()=>{
+      state.activeLayer=p.layerId; cursorT=s; cursorEnd=e;
+      editingNote=p.note||'';                         // 暂存原便签，确认修改后带回（只改长短不丢字）
+      state.points=state.points.filter(x=>x.id!==p.id);
+      editing=true;                                   // 标记进入"改片段"态，modebar 给明确提示
+      save();buildLanes();renderMarks();renderModebar();renderStructure();refreshPtBtn();updateSteps();
+      els.layers.scrollIntoView({behavior:'smooth',block:'center'});
+      requestAnimationFrame(()=>{ const sel=els.layers.querySelector('.lane[data-layer="'+p.layerId+'"] .seg-sel'); if(sel){ sel.classList.remove('editing'); void sel.offsetWidth; sel.classList.add('editing'); } });
+    };
+    // 便签开关（第二行）：默认"＋ 记一句"小按钮，有内容就显示内容；点开出输入框、点收起
+    const toggle=document.createElement('button');toggle.className='note-toggle'+(p.note&&p.note.trim()?' has':'');
+    const setToggleLabel=()=>{ toggle.textContent = p.note && p.note.trim() ? '✎ '+p.note : '＋ 记一句(可选)'; toggle.title=p.note?'看/改这条便签':'加一句感觉（可选）'; };
+    setToggleLabel();
+    // 便签输入区（默认隐藏，note-open 时显示）
+    const wrap=document.createElement('div');wrap.className='pt-note-wrap';
+    const hint=document.createElement('div');hint.className='pt-note-hint';hint.textContent='记一句感觉/意图就好';
+    const note=document.createElement('input');note.className='pt-note';note.value=p.note||'';note.placeholder='例如：随着旋律，动作方位往下落';
+    note.oninput=()=>{p.note=note.value;toggle.classList.toggle('has',!!note.value.trim());setToggleLabel();save();};
+    // 退出输入（失焦）自动收起，不用再点按钮；Enter 直接收起
+    note.onblur=()=>{ row.classList.remove('note-open'); };
+    note.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); note.blur(); } };
+    wrap.append(hint,note);
+    // 点便签按钮：展开输入框并聚焦（收起交给失焦，避免"点按钮时 blur 又 toggle"打架）
+    toggle.onclick=()=>{ row.classList.add('note-open'); note.focus(); };
+    // DOM 顺序：时间·分层 → 删除(第1行右) → 便签按钮+输入框(第2行) → 修改片段(第3行)；靠 CSS order/换行排成三行
+    row.append(t,badge,del,toggle,wrap,edit);return row;
+  }
+
+  // ---------- add ----------
+  // 只有选中某层的点/段落后（cursorT!=null）才可点击；文案随"新建/改片段"变化
+  function refreshPtBtn(){
+    const hasSel = cursorT!=null;
+    els.ptBtn.disabled = !ready || !hasSel;
+    els.ptBtn.textContent = editing ? '◆ 确认修改' : '◆ 确定标记';
+  }
+  els.ptBtn.onclick=()=>{ if(!ready||cursorT==null)return;
+    state.points.push({id:Date.now()+''+Math.random().toFixed(3).slice(2),start:cursorT,end:cursorEnd,layerId:state.activeLayer,note:editingNote});
+    cursorT=null; cursorEnd=null; editing=false; editingNote='';   // 存完清掉预览、退出改片段态、清空暂存便签
+    save();renderMarks();renderStructure();renderModebar();refreshPtBtn();updateSteps();
+  };
+
+  // ---------- 缩放：四轨同步 + 动画补间（丝滑）+ 进度条视窗指示 ----------
+  const ZOOM_MAX=8;
+  let zoomRaf=null;
+  // 更新进度条上的"当前放大了整段哪一块"高亮框
+  function paintViewBox(){
+    if(!state.duration) return;
+    const s=view.start/state.duration, e=view.end/state.duration;
+    els.progressView.style.left=(s*100)+'%';
+    els.progressView.style.width=Math.max(1.5,(e-s)*100)+'%';
+    // 循环态下进度条本身就=视窗，"整首里的视窗框"会误导，隐藏；仅放大且未循环时显示
+    els.progressView.classList.toggle('on', zoom>1.001 && !loopView);
+    paintPan();
+  }
+  // 横向平移滑块：thumb 宽度=视窗占整段比例，位置=视窗起点；只在放大时显示
+  function paintPan(){
+    if(!state.duration) return;
+    const on = zoom>1.001;
+    els.pan.classList.toggle('on', on);
+    if(!on) return;
+    const s=view.start/state.duration, w=(view.end-view.start)/state.duration;
+    els.panThumb.style.left=(s*100)+'%';
+    els.panThumb.style.width=(w*100)+'%';
+  }
+  // 把视窗平移到指定起点（保持当前长度、不改缩放），用于拖动 pan
+  function panTo(startFrac){
+    const len=view.end-view.start;
+    let s=startFrac*state.duration;
+    s=Math.max(0,Math.min(state.duration-len, s));
+    view.start=s; view.end=s+len;
+    drawAll(); renderMarks(); paintViewBox(); paintPlayhead(); paintBeats();
+  }
+  // 目标视窗（由 zoom + 锚点算出），然后用 rAF 缓动过去
+  function computeTargetView(nextZoom, anchor){
+    const len = state.duration/nextZoom;
+    let s = anchor - len/2, e = s + len;
+    if(s<0){ s=0; e=len; }
+    if(e>state.duration){ e=state.duration; s=e-len; }
+    return { start:Math.max(0,s), end:Math.min(state.duration,e) };
+  }
+  function animateView(target){
+    if(zoomRaf) cancelAnimationFrame(zoomRaf);
+    const from={start:view.start,end:view.end};
+    const t0=performance.now(), DUR=260;
+    const ease=x=>1-Math.pow(1-x,3);   // easeOutCubic，收尾丝滑
+    function step(now){
+      const k=Math.min(1,(now-t0)/DUR), e=ease(k);
+      view.start=from.start+(target.start-from.start)*e;
+      view.end  =from.end  +(target.end  -from.end)  *e;
+      drawAll(); renderMarks(); paintViewBox(); paintPlayhead(); paintBeats();   // 每帧只重画canvas+overlay，不重建DOM=不卡
+      if(k<1){ zoomRaf=requestAnimationFrame(step); } else { zoomRaf=null; }
+    }
+    zoomRaf=requestAnimationFrame(step);
+  }
+  function applyZoom(nextZoom){
+    nextZoom=Math.max(1,Math.min(ZOOM_MAX,nextZoom));
+    // 锚点：优先用打点游标，其次当前播放位置，最后用当前视窗中点
+    const anchor = (cursorT!=null?cursorT: (playing?now(): (view.start+view.end)/2));
+    zoom=nextZoom;
+    els.zoomLvl.textContent=zoom.toFixed(1)+'×';
+    els.zoomIn.disabled=(zoom>=ZOOM_MAX); els.zoomOut.disabled=(zoom<=1);
+    // AB段循环只在放大时可用：缩回 1× 自动关闭并禁用
+    const zoomed=(zoom>1.001);
+    els.loopBtn.disabled=!zoomed;
+    if(!zoomed && loopView){ loopView=false; els.loopBtn.classList.remove('on'); }
+    animateView(computeTargetView(nextZoom, anchor));
+    // 缩放不再输出文字提示（视窗高亮框+平移滑块已足够表达）
+    showZoomHint('');
+  }
+  function showZoomHint(txt){
+    zoomHintTxt=txt;
+    const el=$('#zoomHint');
+    if(el) el.textContent=txt;
+  }
+  els.zoomIn.onclick=()=>{ if(!ready)return; applyZoom(zoom*2); };
+  els.zoomOut.onclick=()=>{ if(!ready)return; applyZoom(zoom/2); };
+
+  // 横向平移滑块：拖 thumb（或点轨道空白）平移视窗，看放大片段的前后内容
+  (function initPan(){
+    const startDrag=(e)=>{
+      if(zoom<=1.001) return;
+      e.preventDefault();
+      const rect=els.pan.getBoundingClientRect(), thumbW=els.panThumb.getBoundingClientRect().width;
+      const isThumb=e.target===els.panThumb;
+      const grabDx = isThumb ? ((e.touches?e.touches[0].clientX:e.clientX) - els.panThumb.getBoundingClientRect().left) : thumbW/2;
+      const move=(ev)=>{
+        const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
+        const leftPx=Math.max(0,Math.min(rect.width-thumbW, cx-rect.left-grabDx));
+        panTo(leftPx/rect.width);
+      };
+      move(e);
+      const up=()=>{ document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up); };
+      document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+      document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+    };
+    els.pan.addEventListener('mousedown',startDrag);
+    els.pan.addEventListener('touchstart',startDrag,{passive:false});
+  })();
+
+  // ---------- Web Audio 混音播放（四轨同一时钟，天然同步、无漂移、不卡）----------
+  // 两条引擎：rate==1 用原生 BufferSource（音质最好、零开销）；rate!=1 用 SoundTouch 保音高变速。
+  // 变速引擎让四轨共用同一 tempo、同一 ctx 时钟、每次回调拉同样帧数 → 天然同步。
+  function startSources(offset){
+    stopSources();
+    startCtxTime=actx.currentTime; startOffset=offset;
+    const ST=window.SoundTouchJS;
+    if(rate!==1 && ST){
+      const startFrame = Math.floor(offset*actx.sampleRate);
+      LAYERS.forEach(L=>{
+        if(!buffers[L.id]) return;
+        const st=new ST.SoundTouch(); st.tempo=rate;                    // 只改 tempo(时长)、不改 pitch → 保音高
+        const src=new ST.WebAudioBufferSource(buffers[L.id]);
+        const filter=new ST.SimpleFilter(src, st);
+        filter.sourcePosition=startFrame;                               // 从 offset 处开始拉源
+        // 自建 ScriptProcessor，把 SoundTouch 交错输出拆回左右声道
+        const node=actx.createScriptProcessor(4096,2,2);
+        const tmp=new Float32Array(4096*2);
+        node.onaudioprocess=(e)=>{
+          const l=e.outputBuffer.getChannelData(0), r=e.outputBuffer.getChannelData(1);
+          const got=filter.extract(tmp,4096);
+          for(let i=0;i<got;i++){ l[i]=tmp[i*2]; r[i]=tmp[i*2+1]; }
+          for(let i=got;i<4096;i++){ l[i]=0; r[i]=0; }                  // 末尾补零，避免播完出现杂音
+        };
+        node.connect(gains[L.id]);
+        sources[L.id]=node; stFilters[L.id]=filter;
+      });
+    } else {
+      LAYERS.forEach(L=>{
+        if(!buffers[L.id]) return;
+        const s=actx.createBufferSource(); s.buffer=buffers[L.id]; s.connect(gains[L.id]); s.start(0,offset);
+        sources[L.id]=s;
+      });
+      // 用其中一条 source 的 onended 作自然结束（变速路径靠 tick 里的 now()>=duration 收尾）
+      const first=sources[LAYERS[0].id];
+      if(first) first.onended=()=>{ if(playing && rate===1 && now()>=state.duration-0.05){ playing=false; els.playBtn.textContent='▶'; cancelAnimationFrame(raf); startOffset=0; tick(); } };
+    }
+  }
+  function stopSources(){
+    Object.values(sources).forEach(s=>{ try{ if(s.stop) s.stop(); else s.disconnect(); s.onended=null; s.onaudioprocess=null; }catch(e){} });
+    sources={}; stFilters={};
+  }
+  function play(){
+    if(actx.state==='suspended') actx.resume();
+    startSources(startOffset>=state.duration?0:startOffset);
+    playing=true; els.playBtn.textContent='❚❚'; loop();
+  }
+  function pause(){ if(!playing)return; startOffset=now(); stopSources(); playing=false; els.playBtn.textContent='▶'; cancelAnimationFrame(raf); }
+  function seek(t){
+    if(loopView){ t=Math.max(view.start, Math.min(view.end, t)); }   // 循环态：只在当前视窗内跳
+    else { t=Math.max(0,Math.min(state.duration,t)); }
+    if(playing){ startSources(t); } else { startOffset=t; } tick();
+  }
+  els.playBtn.onclick=()=>{ if(!ready)return; playing?pause():play(); };
+  // AB段循环开关：只在放大时可用。开启后进度条含义切换为"仅当前视窗"，播到视窗尾自动跳回视窗头
+  els.loopBtn.onclick=()=>{
+    if(zoom<=1.001) return;                       // 双保险：未放大不生效
+    loopView=!loopView;
+    els.loopBtn.classList.toggle('on', loopView);
+    if(loopView){                                  // 开启：把当前播放位置收进视窗，避免进度条越界
+      const t=now();
+      if(t<view.start || t>view.end){ seek(view.start); }
+    }
+    paintViewBox();                                // 循环时隐藏"整首里的视窗框"（进度条已=视窗）
+    tick();                                        // 立即按新参照范围重画进度条
+  };
+  // 八拍开关：显示/隐藏八拍标尺。纯叠加层，不影响播放/编排，任何缩放下都可开
+  els.beatBtn.onclick=()=>{
+    if(!beatData) return;
+    showBeats=!showBeats;
+    els.beatBtn.classList.toggle('on', showBeats);
+    paintBeats();
+  };
+  // 变速：改速率。正在播时"在当前位置换挡"——先固化当前秒数，再以新速率从该处重启
+  // （startSources 会按 rate 自动选原生/SoundTouch 引擎），播放头/进度条/循环无跳变。
+  function setRate(r){
+    const cur = now();                                          // 先用旧引擎读准当前位置
+    rate=r;
+    els.rateGroup.classList.toggle('on', Math.abs(r-1)>1e-6);   // 非 1.0× 高亮整个变速组，提示"在变速"
+    if(playing){ startOffset=cur; startSources(cur); }          // 无缝换挡：以新引擎从 cur 处重启
+  }
+  els.rateSelect.onchange=()=>{ if(!ready)return; setRate(parseFloat(els.rateSelect.value)||1); };
+
+  function paintPlayhead(){
+    const ph=els.layers.querySelector('#globalPlayhead'); if(!ph) return;
+    const lanes=els.layers.querySelectorAll('.lane'); if(!lanes.length){ph.style.display='none';return;}
+    const lp=pct(now());
+    if(lp<0||lp>100){ ph.style.display='none'; return; }
+    const contRect=els.layers.getBoundingClientRect();
+    const first=lanes[0].getBoundingClientRect(), last=lanes[lanes.length-1].getBoundingClientRect();
+    const laneLeft=first.left-contRect.left, laneW=first.width;
+    ph.style.display='block';
+    ph.style.left=(laneLeft + lp/100*laneW)+'px';
+    ph.style.top=(first.top-contRect.top)+'px';
+    ph.style.height=(last.bottom-first.top)+'px';
+  }
+  // 八拍标尺：把 beatData 的拍点按当前视窗[view]换算到像素、画竖线+每小节第1拍标1-8。可选叠加、随缩放/平移重画。
+  function paintBeats(){
+    let ov=els.layers.querySelector('#beatOverlay');
+    if(!ov){ ov=document.createElement('div'); ov.id='beatOverlay'; ov.className='beat-overlay'; els.layers.appendChild(ov); }
+    ov.classList.toggle('on', showBeats && !!beatData);
+    if(!showBeats || !beatData){ ov.innerHTML=''; return; }
+    const lanes=els.layers.querySelectorAll('.lane'); if(!lanes.length){ ov.innerHTML=''; return; }
+    const contRect=els.layers.getBoundingClientRect();
+    const first=lanes[0].getBoundingClientRect(), last=lanes[lanes.length-1].getBoundingClientRect();
+    const laneLeft=first.left-contRect.left, laneW=first.width;
+    ov.style.left=laneLeft+'px'; ov.style.top=(first.top-contRect.top)+'px';
+    ov.style.width=laneW+'px'; ov.style.height=(last.bottom-first.top)+'px';
+    // 只画落在当前视窗内的拍，避免放大时画上千条
+    const vs=view.start, ve=(view.end>view.start)?view.end:state.duration, vlen=ve-vs;
+    let html='';
+    // 用 beats[] + nums[]（每拍的 1-8 编号）逐拍画；拍子从歌曲开头就存在，编号只是相位
+    const bs=beatData.beats||[], ns=beatData.nums||[];
+    for(let i=0;i<bs.length;i++){
+      const t=bs[i]; if(t<vs||t>ve) continue;
+      const x=((t-vs)/vlen)*laneW;
+      const n=ns[i]||(((i)%8)+1);
+      const isDown=(n===1);   // 第1拍：加粗竖线 + 琥珀数字
+      html+=`<div class="beat-line${isDown?' b1':''}" style="left:${x}px"></div>`;
+      html+=`<div class="beat-num${isDown?' n1':''}" style="left:${x}px">${n}</div>`;
+    }
+    ov.innerHTML=html;
+  }
+  function tick(){
+    let t=now();
+    // 变速路径没有 onended，播到结尾在这里收尾（1.0× 由 source.onended 处理）
+    if(playing && rate!==1 && !loopView && t>=state.duration-0.05){
+      playing=false; els.playBtn.textContent='▶'; cancelAnimationFrame(raf); stopSources(); startOffset=0; tick(); return;
+    }
+    // 循环视窗：播到视窗尾（或跑到视窗外）自动跳回视窗头
+    if(loopView && playing && (t>=view.end-0.02 || t<view.start-0.02)){
+      seek(view.start); return;
+    }
+    els.cur.textContent=fmt(t);
+    const gp = (t-rangeLo())/rangeLen();               // 进度条按"参照范围"算：循环时=视窗，否则=整首
+    const gpc = Math.max(0,Math.min(1,gp));
+    paintPlayhead();
+    els.progressFill.style.width=(gpc*100)+'%'; els.progressKnob.style.left=(gpc*100)+'%';
+  }
+  function loop(){ tick(); raf=requestAnimationFrame(loop); }
+
+  // ---------- 独立进度条：点击 + 拖动 seek（基于整段，不受缩放影响）----------
+  // 拖动时只移动视觉、不反复重启音源；松手才真正 seek，避免卡顿
+  let dragging=false, wasPlaying=false, dragT=0;
+  function progressPct(clientX){ const r=els.progress.getBoundingClientRect(); return Math.max(0,Math.min(1,(clientX-r.left)/r.width)); }
+  // p 是"参照范围"内的比例 [0,1]；换算成真实秒数 = rangeLo + p*rangeLen（循环时=视窗内，否则=整首）
+  function paintProgress(p){ els.progressFill.style.width=(p*100)+'%'; els.progressKnob.style.left=(p*100)+'%'; paintPlayhead(); els.cur.textContent=fmt(rangeLo()+p*rangeLen()); }
+  const dragStart=(clientX)=>{ if(!ready)return; dragging=true; wasPlaying=playing; if(playing){ pause(); } dragT=progressPct(clientX); paintProgress(dragT); };
+  const dragMove =(clientX)=>{ if(!dragging)return; dragT=progressPct(clientX); paintProgress(dragT); };
+  const dragEnd  =()=>{ if(!dragging)return; dragging=false; startOffset=rangeLo()+dragT*rangeLen(); if(wasPlaying){ play(); } else { tick(); } };
+  // 鼠标（桌面）
+  els.progress.addEventListener('mousedown',e=>{ dragStart(e.clientX); });
+  window.addEventListener('mousemove',e=>{ dragMove(e.clientX); });
+  window.addEventListener('mouseup',dragEnd);
+  // 触摸（手机）：按住圆球/进度条任意处都能拖动；拖动中阻止页面滚动
+  els.progress.addEventListener('touchstart',e=>{ if(!ready)return; if(e.cancelable)e.preventDefault(); dragStart(e.touches[0].clientX); },{passive:false});
+  window.addEventListener('touchmove',e=>{ if(!dragging)return; if(e.cancelable)e.preventDefault(); dragMove(e.touches[0].clientX); },{passive:false});
+  window.addEventListener('touchend',dragEnd);
+
+  els.clearBtn.onclick=()=>{ if(!state.points.length && cursorT==null){return;} if(!confirm('清空所有灵感点？'))return; state.points=[]; cursorT=null; cursorEnd=null; editing=false; save();buildLanes();renderMarks();renderStructure();renderModebar();refreshPtBtn();updateSteps(); };
+  // 帮助「?」：点击/tap 切换弹出（手机没有 hover，必须支持点击），点其他地方收起
+  (function initHelp(){
+    const hb=$('#helpBtn'); if(!hb) return;
+    const pop=hb.querySelector('.help-pop');
+    hb.addEventListener('click',(e)=>{
+      if(pop && pop.contains(e.target)) return;   // 点在气泡文本内不切换（只当阅读）
+      e.stopPropagation(); hb.classList.toggle('open');
+    });
+    document.addEventListener('click',(e)=>{ if(!hb.contains(e.target)) hb.classList.remove('open'); });
+  })();
+  function updateSteps(){ /* 步骤已改为非线性说明，不再高亮进度 */ }
+  // 点击音轨/操作区之外的空白处 → 弹确认框再取消当前选段（防误触丢失已选段落）
+  let confirmingCancel=false;   // 弹窗打开期间，避免重复触发
+  document.addEventListener('mousedown',(e)=>{
+    if(cursorT==null || suppressClick || confirmingCancel) return;
+    if(e.target.closest('.lane')||e.target.closest('.add-row')||e.target.closest('.structure')||e.target.closest('.progress')||e.target.closest('.pan')||e.target.closest('.seg-h')||e.target.closest('.zoom')||e.target.closest('.transport')||e.target.closest('.modal-mask')) return;
+    confirmingCancel=true;
+    askConfirm('是否确定取消选中', editing?'当前正在修改的片段将不被保存':'当前选中的段落将被取消').then(yes=>{
+      confirmingCancel=false;
+      if(!yes) return;                              // 否：保留选段，什么都不做
+      cursorT=null; cursorEnd=null; editing=false; editingNote='';
+      buildLanes(); renderMarks(); renderModebar(); refreshPtBtn();
+    });
+  });
+  window.addEventListener('resize',()=>{ if(ready){buildLanes();renderMarks();} });
+
+  init();
+})();
+</script>
+</body>
+</html>
