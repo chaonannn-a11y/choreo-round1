@@ -405,6 +405,12 @@
   async function init(){
     const AC = window.AudioContext||window.webkitAudioContext;
     actx = new AC();
+    // 自动播放策略会把"未经用户手势创建的 AudioContext"置为 suspended，
+    // 而 suspended 下 decodeAudioData 在部分浏览器（手机/Safari）会一直不返回 → 卡在"正在载入"。
+    // 兜底：监听文档首次手势，自动 resume；解锁后自解绑。
+    const unlock=()=>{ if(actx && actx.state==='suspended'){ actx.resume().catch(()=>{}); }
+      ['pointerdown','touchstart','keydown','click'].forEach(ev=>document.removeEventListener(ev,unlock)); };
+    ['pointerdown','touchstart','keydown','click'].forEach(ev=>document.addEventListener(ev,unlock,{once:false}));
     buildSongSelect();
     await loadSong(songId);
   }
@@ -427,17 +433,34 @@
     els.loading.style.display='grid'; els.loading.textContent='正在载入 AI 分离的四条音轨…';
     els.zoomLvl.textContent='1.0×';
     const dir=STEM_DIR();
-    let loaded=0;
+    // 解码兼容封装：老 Safari 的 decodeAudioData 只支持 callback（不返回 Promise），
+    // 且 suspended 下可能不返回 → 用 Promise 包一层 + 超时兜底，避免无限卡"正在载入"。
+    const decode=(arrbuf)=>new Promise((resolve,reject)=>{
+      let done=false;
+      const to=setTimeout(()=>{ if(!done){ done=true; reject(new Error('decode timeout')); } }, 20000);
+      try{
+        const p=actx.decodeAudioData(arrbuf, b=>{ if(!done){done=true;clearTimeout(to);resolve(b);} },
+                                              e=>{ if(!done){done=true;clearTimeout(to);reject(e||new Error('decode error'));} });
+        if(p&&p.then) p.then(b=>{ if(!done){done=true;clearTimeout(to);resolve(b);} },
+                              e=>{ if(!done){done=true;clearTimeout(to);reject(e);} });
+      }catch(e){ if(!done){done=true;clearTimeout(to);reject(e);} }
+    });
+    if(actx.state==='suspended'){ try{ await actx.resume(); }catch(e){} }   // 解码前先尝试恢复
+    let loaded=0, failed=0;
     for(const L of LAYERS){
       try{
         const resp = await fetch(dir+L.file);
-        const buf = await actx.decodeAudioData(await resp.arrayBuffer());
+        const buf = await decode(await resp.arrayBuffer());
         buffers[L.id]=buf;
         peaks[L.id]=computePeaks(buf,800);
         if(buf.duration>state.duration) state.duration=buf.duration;
         const g=actx.createGain(); g.gain.value = state.mute[L.id]?0:1; g.connect(actx.destination); gains[L.id]=g;
-      }catch(e){ console.warn('decode fail',L.id,e); }
+      }catch(e){ failed++; console.warn('decode fail',L.id,e); }
       loaded++; els.loading.textContent=`正在载入 AI 分离的四条音轨… (${loaded}/4)`;
+    }
+    if(failed===LAYERS.length){   // 四条全失败：别停在"正在载入"，给出可操作提示
+      els.loading.textContent='音频加载失败，请点一下页面再刷新试试（或换 Chrome 打开）';
+      return;
     }
     ready=true;
     view.start=0; view.end=state.duration;   // 初始视窗=整段
