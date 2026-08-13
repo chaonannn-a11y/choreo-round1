@@ -132,6 +132,7 @@
   /* 带边框的控件组：把"缩放"和"变速"各自框起来 + 加图标，避免两个都显示 ×倍数 时看混 */
   .ctl-group{display:flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:10px;padding:3px 7px;margin-left:4px}
   .ctl-group .ctl-icon{font-size:12px;opacity:.6;line-height:1;user-select:none}
+  .ctl-group .ctl-label{font-size:11.5px;color:var(--ink-dim);white-space:nowrap;user-select:none}
   .ctl-group.on{border-color:var(--amber);background:#241b10;box-shadow:0 0 0 1px var(--amber) inset}
   .zoom{display:flex;align-items:center;gap:6px}
   .zoom-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--bg-elev);color:var(--ink-dim);font-size:15px;font-weight:700;display:grid;place-items:center;line-height:1}
@@ -236,22 +237,26 @@
       <div class="time"><b id="cur">0:00.0</b> / <span id="dur">0:00.0</span></div>
       <div class="ctl-group" id="zoomGroup" title="放大波形：方便把灵感点标得更准">
         <span class="ctl-icon">🔍</span>
+        <span class="ctl-label">调整音轨大小</span>
         <div class="zoom" id="zoom">
           <button class="zoom-btn" id="zoomOut" title="缩小" disabled>－</button>
-          <span class="zoom-lvl" id="zoomLvl">1.0×</span>
+          <span class="zoom-lvl" id="zoomLvl">x1</span>
           <button class="zoom-btn" id="zoomIn" title="放大波形，方便标得更准" disabled>＋</button>
         </div>
       </div>
       <div class="ctl-group" id="rateGroup" title="变速播放：放慢方便反复听、跟练">
         <span class="ctl-icon">⏩</span>
+        <span class="ctl-label">倍速</span>
         <select class="rate-select" id="rateSelect" disabled>
-          <option value="0.8">0.8×</option>
-          <option value="0.9">0.9×</option>
-          <option value="1" selected>1.0×</option>
-          <option value="2">2.0×</option>
+          <option value="0.7">x0.7</option>
+          <option value="0.8">x0.8</option>
+          <option value="0.9">x0.9</option>
+          <option value="1" selected>x1.0</option>
+          <option value="1.5">x1.5</option>
+          <option value="2">x2.0</option>
         </select>
       </div>
-      <button class="loop-btn" id="loopBtn" title="放大后可开启：循环播放当前视窗（AB段循环）" disabled>🔁 循环视窗</button>
+      <button class="loop-btn" id="loopBtn" title="放大后可开启：循环播放当前段落（AB段循环）" disabled>🔁 当前段落循环：关</button>
       <button class="loop-btn" id="beatBtn" title="显示每个八拍的 1-8 计数（适合教学/数拍；不影响编排，可随时关）" disabled>🎼 八拍显示</button>
       <select class="song-select" id="songSelect" title="切换歌曲"></select>
     </div>
@@ -434,10 +439,10 @@
     fetch('beats/'+BEAT_VARIANT+'/beats_'+id+'.json').then(r=>r.ok?r.json():null).then(d=>{ beatData=d; if(d) els.beatBtn.disabled=false; paintBeats(); }).catch(()=>{ beatData=null; });
     load();                                   // 读这首歌自己的灵感点/独奏
     ready=false;
-    els.playBtn.disabled=true; els.zoomIn.disabled=true; els.zoomOut.disabled=true; els.loopBtn.disabled=true; els.loopBtn.classList.remove('on');
+    els.playBtn.disabled=true; els.zoomIn.disabled=true; els.zoomOut.disabled=true; els.loopBtn.disabled=true; els.loopBtn.classList.remove('on'); els.loopBtn.textContent='🔁 当前段落循环：关';
     els.loading.style.display='grid'; els.loading.textContent='正在载入 AI 分离的四条音轨…';
     els.loadingTip.classList.add('show');   // 触屏设备加载时显示"点屏幕解锁"提示（CSS 只在 pointer:coarse 生效）
-    els.zoomLvl.textContent='1.0×';
+    els.zoomLvl.textContent='x1';
     const dir=STEM_DIR();
     // 解码兼容封装：老 Safari 的 decodeAudioData 只支持 callback（不返回 Promise），
     // 且 suspended 下可能不返回 → 用 Promise 包一层 + 超时兜底，避免无限卡"正在载入"。
@@ -746,7 +751,7 @@
     // 锚点：优先用打点游标，其次当前播放位置，最后用当前视窗中点
     const anchor = (cursorT!=null?cursorT: (playing?now(): (view.start+view.end)/2));
     zoom=nextZoom;
-    els.zoomLvl.textContent=zoom.toFixed(1)+'×';
+    els.zoomLvl.textContent='x'+Math.round(zoom);
     els.zoomIn.disabled=(zoom>=ZOOM_MAX); els.zoomOut.disabled=(zoom<=1);
     // AB段循环只在放大时可用：缩回 1× 自动关闭并禁用
     const zoomed=(zoom>1.001);
@@ -845,6 +850,7 @@
     if(zoom<=1.001) return;                       // 双保险：未放大不生效
     loopView=!loopView;
     els.loopBtn.classList.toggle('on', loopView);
+    els.loopBtn.textContent='🔁 当前段落循环：'+(loopView?'开':'关');
     if(loopView){                                  // 开启：把当前播放位置收进视窗，避免进度条越界
       const t=now();
       if(t<view.start || t>view.end){ seek(view.start); }
