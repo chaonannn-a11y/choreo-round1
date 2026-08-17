@@ -6,7 +6,11 @@
 <title>ChoreoAssist · 真·分层编舞脚手架（AI 分离版）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<!-- 字体异步加载：先用系统字体秒开，Google Fonts 到了再替换。避免境外字体域名连不上时阻塞整页渲染（曾导致本地也要等~1分钟）。 -->
+<link rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"
+      media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap"></noscript>
 <!-- SoundTouchJS：保音高变速（time-stretch）。本地引入，离线/手机 LAN 都可用 -->
 <script src="vendor/soundtouch.js"></script>
 <style>
@@ -124,7 +128,31 @@
   .help-btn.open .help-pop{opacity:1;visibility:visible;transition:opacity .15s,visibility 0s}
   .hint-inline{font-size:12px;color:var(--ink-dim);align-self:center;font-style:italic;margin-left:auto}
   .pt-marker{position:absolute;top:0;bottom:0;border-left:2px solid;border-right:2px solid;border-color:inherit;border-radius:3px}
-  .pt-flag{position:absolute;transform:translate(-50%,0);font-family:var(--mono);font-size:10px;font-weight:700;color:#1a0d08;padding:1px 5px;border-radius:4px;bottom:4px}
+  /* 灵感点旗子：可交互（悬停/点击弹浮层）。lane-ov 是 pointer-events:none，这里单独放开 */
+  .pt-flag{position:absolute;transform:translate(-50%,0);font-family:var(--mono);font-size:10px;font-weight:700;color:#1a0d08;padding:2px 6px;border-radius:4px;bottom:4px;pointer-events:auto;cursor:pointer;transition:transform .12s ease,box-shadow .12s ease}
+  .pt-flag:hover{transform:translate(-50%,-2px) scale(1.12);box-shadow:0 3px 10px -2px #000c}
+  .pt-flag.active{transform:translate(-50%,-2px) scale(1.12);box-shadow:0 0 0 2px #fff6}
+  @media (pointer:coarse){ .pt-flag{padding:4px 9px;font-size:11px} }
+  /* 灵感点浮层：挂在 .layers 上（避开 .lane 的 overflow:hidden），JS 按旗子位置定位 */
+  .pt-pop{position:absolute;display:none;width:236px;background:#241f1b;border:1px solid var(--line);border-radius:12px;padding:12px 13px;box-shadow:0 18px 46px -18px #000,0 4px 12px -6px #000;z-index:22;text-align:left}
+  .pt-pop::after{content:'';position:absolute;top:100%;left:var(--arrow,50%);transform:translateX(-50%);border:6px solid transparent;border-top-color:#241f1b}
+  .pt-pop .pp-meta{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--ink-dim);margin-bottom:5px;letter-spacing:.02em}
+  .pt-pop .pp-note{font-family:var(--sans);font-size:13.5px;line-height:1.5;color:var(--ink);margin-bottom:11px;white-space:normal;word-break:break-word}
+  .pt-pop .pp-note.empty{color:#6f6357;font-style:italic}
+  .pt-pop .pp-row{display:flex;gap:7px;flex-wrap:nowrap}
+  .pt-pop .pp-row+.pp-row{margin-top:7px}
+  .pt-pop .pp-btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-family:var(--sans);font-size:12px;color:var(--ink-dim);background:var(--bg-elev);border:1px solid var(--line);border-radius:8px;padding:6px 4px;cursor:pointer;white-space:nowrap;transition:.13s}
+  .pt-pop .pp-btn:hover{border-color:#4a4038;color:var(--ink)}
+  .pt-pop .pp-btn.on{color:var(--amber);border-color:var(--amber);background:#241b10;box-shadow:0 0 0 1px var(--amber) inset}
+  .pt-pop .pp-btn.danger:hover{color:var(--coral);border-color:var(--coral)}
+  /* 浮层内的便签编辑（点"记录/修改"才出现） */
+  .pt-pop .pp-edit{display:none;margin-bottom:11px}
+  .pt-pop.editing .pp-note{display:none}
+  .pt-pop.editing .pp-edit{display:block}
+  .pt-pop .pp-input{width:100%;background:transparent;border:none;border-bottom:1px dashed #3a322b;color:var(--ink);font-family:var(--sans);font-size:14px;padding:5px 2px}
+  .pt-pop .pp-input:focus{outline:none;border-bottom-color:var(--coral)}
+  .pt-pop .pp-input::placeholder{color:#5f544a}
+  .pt-pop .pp-edit-hint{font-size:10.5px;color:#6f6357;font-style:italic;margin-top:4px}
   .modebar{margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-dim)}
   .solo-note{font-family:var(--mono);font-size:11px;color:var(--teal)}
   .add-row{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
@@ -161,6 +189,10 @@
   .seg-card .seg-title .range{font-family:var(--mono);font-size:12px;color:var(--ink-dim)}
   .seg-card .no-pt{color:#6f6357;font-size:13px;font-style:italic}
   .pt-item{display:flex;align-items:center;flex-wrap:wrap;row-gap:8px;gap:10px;padding:8px;border-radius:9px;margin-bottom:6px;background:#191512}
+  /* 只读总览行：整行可点跳转 */
+  .pt-item.ro{cursor:pointer;transition:background .13s}
+  .pt-item.ro:hover{background:#221c17}
+  .pt-note-ro{font-family:var(--sans);font-size:13px;color:var(--ink-dim);flex:1 1 100%;line-height:1.4}
   .pt-item .pt-time{font-family:var(--mono);font-size:12px;color:var(--ink-dim);flex:none;width:50px;cursor:pointer}
   .pt-item .pt-time:hover{color:var(--ink)}
   .layer-badge{font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;flex:none}
@@ -324,6 +356,7 @@
     { id:'mojito',     title:'Mojito',                  artist:'周杰伦',        dir:'stems_mojito/' },
     { id:'hip',        title:'HIP',                     artist:'MAMAMOO',      dir:'stems_hip/' },
     { id:'armageddon', title:'Armageddon',              artist:'aespa',        dir:'stems_armageddon/' },
+    { id:'barbie',     title:'Barbie Dreams',           artist:'Nicki Minaj',  dir:'stems_barbie/' },
   ];
   let songId = SONGS[0].id;
   const curSong = () => SONGS.find(s=>s.id===songId) || SONGS[0];
@@ -347,6 +380,10 @@
   let editingNote = '';            // 改片段时暂存原便签，"确认修改"后带回，避免只改长短却丢了记的一句
   let suppressClick = false;       // 拖完手柄后抑制紧随的 lane click，防止误重置选段
   let loopView = false;            // 是否开启"循环当前放大视窗"（AB段循环）；只在放大时可用
+  // 灵感点循环：某个灵感点在循环 [start-2s, end+2s] 时，记它的 id + 边界。同一时刻只有一个点在循环；与 loopView 互斥。
+  let loopPtId = null;             // 正在循环的灵感点 id，null=无
+  let ptLoopLo = 0, ptLoopHi = 0;  // 该点的循环区间（含±2s，已裁剪到 [0,duration]）
+  const PT_PAD = 2;                // 播放/循环时灵感点前后各留 2 秒
   let showBeats = false;           // 是否显示八拍标尺（可选叠加层，教学/数拍用，不影响编排）
   let beatData = null;             // 当前歌的拍点数据 {bpm,beats:[t...],nums:[1..8...],measures}
   // 八拍对齐版本（A/B 盲测）：URL ?beat=auto 用自动版，默认 manual（人工锚点版）。用户端只看到"版本"、看不到差别来源。
@@ -394,9 +431,9 @@
   const viewLen = () => (view.end>view.start) ? (view.end-view.start) : state.duration;
   // pct：把某个时刻换算成"当前视窗内"的百分比位置（可能<0或>100，即在窗口外）
   const pct = t => ((t-view.start)/viewLen())*100;
-  // 进度条/播放的参照范围：开循环时=当前放大视窗[view]，否则=整首[0,duration]
-  const rangeLo = () => (loopView ? view.start : 0);
-  const rangeHi = () => (loopView ? view.end : state.duration);
+  // 进度条/播放的参照范围：灵感点循环时=该点±2s 区间；开视窗循环时=当前放大视窗[view]；否则=整首[0,duration]
+  const rangeLo = () => (loopPtId ? ptLoopLo : (loopView ? view.start : 0));
+  const rangeHi = () => (loopPtId ? ptLoopHi : (loopView ? view.end : state.duration));
   const rangeLen = () => Math.max(0.01, rangeHi()-rangeLo());
   // 当前播放进度（秒）。用墙钟推算保证显示连续丝滑（rate 倍速流逝）；
   // SoundTouch 的 sourcePosition 是每 4096 帧才跳一次的离散值，只用于 seek/换挡时校准，不用于逐帧显示。
@@ -432,7 +469,8 @@
     if(playing){ try{stopSources();}catch(e){} }
     playing=false; startOffset=0; if(raf) cancelAnimationFrame(raf);
     buffers={}; peaks={}; gains={}; sources={};
-    state.duration=0; zoom=1; loopView=false; cursorT=null; cursorEnd=null; editing=false;
+    state.duration=0; zoom=1; loopView=false; loopPtId=null; cursorT=null; cursorEnd=null; editing=false;
+    if(typeof closePop==='function') closePop();   // 切歌收起可能开着的灵感点浮层
     beatData=null; showBeats=false; els.beatBtn.classList.remove('on');   // 切歌重置八拍开关
     if(els.beatBtn) els.beatBtn.disabled=true;
     rate=1; els.rateSelect.value='1'; els.rateGroup.classList.remove('on'); els.rateSelect.disabled=true;   // 切歌复位变速
@@ -456,7 +494,7 @@
                               e=>{ if(!done){done=true;clearTimeout(to);reject(e);} });
       }catch(e){ if(!done){done=true;clearTimeout(to);reject(e);} }
     });
-    if(actx.state==='suspended'){ try{ await actx.resume(); }catch(e){} }   // 解码前先尝试恢复
+    if(actx.state==='suspended'){ actx.resume().catch(()=>{}); }   // 尝试恢复但不 await：桌面无手势时 resume 会一直 pending，await 会卡住解码。解码在 suspended 下也能正常进行，真正发声在播放时才需要 running。
     let loaded=0, failed=0;
     // 四条并行下载+解码（原来是串行，四条时间相加；并行后总耗时≈最慢那条，弱网下明显更快）
     await Promise.all(LAYERS.map(async L=>{
@@ -526,6 +564,7 @@
           <div class="seg-sel"><div class="seg-h seg-h-l" data-side="l"></div><div class="seg-h seg-h-r" data-side="r"></div></div>
         </div>`;
       lane.onclick=(ev)=>{
+        if(ev.target.closest('.pt-flag')) return;           // 点在灵感点旗子上：交给浮层逻辑，不落新游标
         if(ev.target.classList.contains('seg-h')) return;   // 点在手柄上不重置
         if(suppressClick){ suppressClick=false; return; }    // 刚拖完手柄，抑制这次误触
         state.activeLayer=L.id;                       // 选中该轨（打点绑定它、边框变黄）
@@ -564,12 +603,15 @@
     drawAll(); renderMarks(); paintPlayhead(); paintBeats();
   }
   function drawAll(){
+    // 开启八拍显示时，顶部预留一条净空带给 1-8 数字，波形不画进这条带里，彻底避免数字与波形柱重叠。
+    const topPad = showBeats ? 15 : 0;
     els.layers.querySelectorAll('.lane').forEach(lane=>{
       const L=layerOf(lane.dataset.layer), cv=lane.querySelector('.lane-canvas');
       const dpr=window.devicePixelRatio||1, w=lane.clientWidth, h=lane.clientHeight;
       cv.width=w*dpr; cv.height=h*dpr; const c=cv.getContext('2d'); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,w,h);
       const pk=peaks[L.id]; if(!pk) return;
-      const on=!state.mute[L.id], mid=h/2;
+      const on=!state.mute[L.id];
+      const mid=(topPad+h)/2, amp=(h-topPad)*0.44;   // 波形中心线与振幅都下移，为顶部数字带让位
       // 只取视窗 [view.start,view.end] 对应的峰值区间，铺满整宽 = 放大
       const N=pk.length;
       const i0=Math.floor(view.start/state.duration*N), i1=Math.ceil(view.end/state.duration*N);
@@ -577,7 +619,7 @@
       c.fillStyle = on ? L.color : '#4a423a80';        // 播放前后不做明暗差，整轨统一色，进度只由贯穿指针体现
       for(let k=0;k<seg;k++){
         const i=i0+k; if(i<0||i>=N) continue;
-        const x=k*bw, bh=Math.max(1,pk[i]*(h*0.44));
+        const x=k*bw, bh=Math.max(1,pk[i]*amp);
         c.fillRect(x,mid-bh,Math.max(1,bw*0.7),bh*2);
       }
     });
@@ -615,7 +657,7 @@
         const m=document.createElement('div');m.className='pt-marker';
         m.style.left=a+'%'; m.style.width=Math.max(0.6,b-a)+'%'; m.style.background=hexA(PL.color,.30); m.style.borderColor=PL.color;
         ov.appendChild(m);
-        const f=document.createElement('div');f.className='pt-flag';f.style.left=a+'%';f.style.background=PL.color;f.textContent='◆';ov.appendChild(f);
+        const f=document.createElement('div');f.className='pt-flag'+(loopPtId===p.id?' active':'');f.style.left=a+'%';f.style.background=PL.color;f.textContent=(loopPtId===p.id?'🔁':'◆');f.dataset.id=p.id;ov.appendChild(f);
       });
       // 打点预览区间只画在"选中的那条轨"上
       const seg=ov.querySelector('.seg-sel');
@@ -642,42 +684,20 @@
     state.points.slice().sort((a,b)=>segStart(a)-segStart(b)).forEach(p=>card.appendChild(ptRow(p)));
     els.structure.appendChild(card);
   }
+  // 下方列表现为「只读总览」：编辑/播放/循环/删除全部收进波形上的灵感点浮层。
+  // 这里只展示 时间·时长 + 层徽章 + 便签文字，点击跳到该段开头。
   function ptRow(p){
     const L=layerOf(p.layerId)||LAYERS[0];
     const s=segStart(p), e=segEnd(p), dur=(e-s).toFixed(1);
-    const row=document.createElement('div');row.className='pt-item';
-    const t=document.createElement('span');t.className='pt-time';t.textContent=fmt(s)+' · '+dur+'s';t.title='跳到这段开头';t.onclick=()=>seek(s);
+    const row=document.createElement('div');row.className='pt-item ro';row.title='点击跳到这段开头（编辑请点波形上的灵感点◆）';
+    row.onclick=()=>seek(s);
+    const t=document.createElement('span');t.className='pt-time';t.textContent=fmt(s)+' · '+dur+'s';
     const badge=document.createElement('span');badge.className='layer-badge';badge.style.color=L.color;badge.style.background=L.soft;badge.textContent=L.name;
-    // 删除：放第一行右侧（破坏性操作，与中间的编辑区隔开，降低误触代价）
-    const del=document.createElement('button');del.className='pt-del';del.innerHTML='🗑 删除';del.title='删除这个灵感点';del.onclick=()=>{state.points=state.points.filter(x=>x.id!==p.id);save();renderStructure();renderMarks();updateSteps();};
-    // 修改片段：放第三行（底部），误触它损失比误触删除小
-    const edit=document.createElement('button');edit.className='pt-edit';edit.textContent='↕ 修改片段';edit.title='重新拖两端调整这一段';
-    edit.onclick=()=>{
-      state.activeLayer=p.layerId; cursorT=s; cursorEnd=e;
-      editingNote=p.note||'';                         // 暂存原便签，确认修改后带回（只改长短不丢字）
-      state.points=state.points.filter(x=>x.id!==p.id);
-      editing=true;                                   // 标记进入"改片段"态，modebar 给明确提示
-      save();buildLanes();renderMarks();renderModebar();renderStructure();refreshPtBtn();updateSteps();
-      els.layers.scrollIntoView({behavior:'smooth',block:'center'});
-      requestAnimationFrame(()=>{ const sel=els.layers.querySelector('.lane[data-layer="'+p.layerId+'"] .seg-sel'); if(sel){ sel.classList.remove('editing'); void sel.offsetWidth; sel.classList.add('editing'); } });
-    };
-    // 便签开关（第二行）：默认"＋ 记一句"小按钮，有内容就显示内容；点开出输入框、点收起
-    const toggle=document.createElement('button');toggle.className='note-toggle'+(p.note&&p.note.trim()?' has':'');
-    const setToggleLabel=()=>{ toggle.textContent = p.note && p.note.trim() ? '✎ '+p.note : '＋ 记一句(可选)'; toggle.title=p.note?'看/改这条便签':'加一句感觉（可选）'; };
-    setToggleLabel();
-    // 便签输入区（默认隐藏，note-open 时显示）
-    const wrap=document.createElement('div');wrap.className='pt-note-wrap';
-    const hint=document.createElement('div');hint.className='pt-note-hint';hint.textContent='记一句感觉/意图就好';
-    const note=document.createElement('input');note.className='pt-note';note.value=p.note||'';note.placeholder='例如：随着旋律，动作方位往下落';
-    note.oninput=()=>{p.note=note.value;toggle.classList.toggle('has',!!note.value.trim());setToggleLabel();save();};
-    // 退出输入（失焦）自动收起，不用再点按钮；Enter 直接收起
-    note.onblur=()=>{ row.classList.remove('note-open'); };
-    note.onkeydown=(e)=>{ if(e.key==='Enter'){ e.preventDefault(); note.blur(); } };
-    wrap.append(hint,note);
-    // 点便签按钮：展开输入框并聚焦（收起交给失焦，避免"点按钮时 blur 又 toggle"打架）
-    toggle.onclick=()=>{ row.classList.add('note-open'); note.focus(); };
-    // DOM 顺序：时间·分层 → 删除(第1行右) → 便签按钮+输入框(第2行) → 修改片段(第3行)；靠 CSS order/换行排成三行
-    row.append(t,badge,del,toggle,wrap,edit);return row;
+    row.append(t,badge);
+    if(p.note && p.note.trim()){
+      const nt=document.createElement('span');nt.className='pt-note-ro';nt.textContent='✎ '+p.note;row.append(nt);
+    }
+    return row;
   }
 
   // ---------- add ----------
@@ -692,6 +712,156 @@
     cursorT=null; cursorEnd=null; editing=false; editingNote='';   // 存完清掉预览、退出改片段态、清空暂存便签
     save();renderMarks();renderStructure();renderModebar();refreshPtBtn();updateSteps();
   };
+
+  // ---------- 灵感点浮层：电脑 hover / 手机 tap 旗子弹出，集成 播放/循环/记录/编辑长短/删除 ----------
+  const isTouch = window.matchMedia('(hover:none)').matches || ('ontouchstart' in window);
+  let popPtId = null;              // 当前浮层对应的灵感点 id（null=未打开）
+  let popHideTimer = null;         // 电脑端移开后的延迟收起计时器（给"从旗子移到浮层"留缓冲）
+
+  // 浮层 DOM（挂在 body，用 fixed 定位到旗子上方；避开 .lane 的 overflow:hidden 与滚动裁剪）
+  const pop=document.createElement('div'); pop.className='pt-pop'; pop.style.position='fixed';
+  pop.innerHTML=`<div class="pp-meta"></div>
+    <div class="pp-note"></div>
+    <div class="pp-edit"><input class="pp-input" type="text" placeholder="例如：随着旋律，动作方位往下落"><div class="pp-edit-hint">写完点空白处/回车即保存</div></div>
+    <div class="pp-row">
+      <button class="pp-btn" data-act="play">▶ 播放</button>
+      <button class="pp-btn" data-act="loop">🔁 循环</button>
+      <button class="pp-btn" data-act="note">✎ 记录</button>
+    </div>
+    <div class="pp-row">
+      <button class="pp-btn" data-act="len">↕ 编辑长短</button>
+      <button class="pp-btn danger" data-act="del">🗑 删除</button>
+    </div>`;
+  document.body.appendChild(pop);
+  const ppMeta=pop.querySelector('.pp-meta'), ppNote=pop.querySelector('.pp-note'),
+        ppInput=pop.querySelector('.pp-input'),
+        ppPlay=pop.querySelector('[data-act="play"]'), ppLoop=pop.querySelector('[data-act="loop"]'),
+        ppNoteBtn=pop.querySelector('[data-act="note"]'), ppLen=pop.querySelector('[data-act="len"]'),
+        ppDel=pop.querySelector('[data-act="del"]');
+
+  const findPt = id => state.points.find(x=>x.id===id);
+  // 灵感点±2s 播放区间，裁剪到 [0,duration]
+  function ptSpan(p){ return [Math.max(0,segStart(p)-PT_PAD), Math.min(state.duration, segEnd(p)+PT_PAD)]; }
+
+  function fillPop(p){
+    const L=layerOf(p.layerId)||LAYERS[0];
+    const s=segStart(p), e=segEnd(p);
+    ppMeta.textContent = L.name.split(' ')[0]+'层 · '+fmt(s)+'-'+fmt(e);   // 如「鼓层 · 0:46.0-0:47.0」
+    const hasNote = p.note && p.note.trim();
+    ppNote.textContent = hasNote ? p.note : '（还没记内容 —— 只显示层级和时间）';
+    ppNote.classList.toggle('empty', !hasNote);
+    ppNoteBtn.textContent = hasNote ? '✎ 修改' : '✎ 记录';
+    ppLoop.classList.toggle('on', loopPtId===p.id);
+    ppLoop.textContent = loopPtId===p.id ? '🔁 循环中' : '🔁 循环';
+    ppInput.value = p.note||'';
+    pop.classList.remove('editing');
+  }
+  // 把浮层定位到某个旗子上方（fixed 坐标）
+  function placePop(flag){
+    const r=flag.getBoundingClientRect();
+    pop.style.visibility='hidden'; pop.style.display='block';
+    const pw=pop.offsetWidth, ph=pop.offsetHeight;
+    let left=r.left + r.width/2 - pw/2;
+    left=Math.max(8, Math.min(window.innerWidth-pw-8, left));   // 不超出视口左右
+    let top=r.top - ph - 10;
+    if(top<8) top=r.bottom+10;                                   // 上方放不下就翻到下方
+    pop.style.left=left+'px'; pop.style.top=top+'px';
+    // 箭头对准旗子中心
+    const arrow=(r.left+r.width/2)-left; pop.style.setProperty('--arrow', Math.max(14,Math.min(pw-14,arrow))+'px');
+    pop.style.visibility='visible';
+  }
+  function openPop(id, flag){
+    const p=findPt(id); if(!p) return;
+    clearTimeout(popHideTimer);
+    popPtId=id; fillPop(p); placePop(flag);
+    els.layers.querySelectorAll('.pt-flag').forEach(f=>f.classList.toggle('active', f.dataset.id===id || (loopPtId&&f.dataset.id===loopPtId)));
+  }
+  function closePop(){
+    popPtId=null; pop.style.display='none'; pop.classList.remove('editing');
+    els.layers.querySelectorAll('.pt-flag').forEach(f=>f.classList.toggle('active', loopPtId&&f.dataset.id===loopPtId));
+  }
+
+  // 播放：跳到该点区间头并从头播 [start-2s, end+2s]（不强制循环）
+  function playPtSpan(p){
+    const [lo,hi]=ptSpan(p);
+    loopView=false; els.loopBtn.classList.remove('on'); els.loopBtn.textContent='🔁 当前段落循环：关';
+    // 非循环播放该段：临时不设 loopPtId，直接 seek 到区间头再播；播到 hi 处不自动停（沿用整首收尾逻辑即可）
+    loopPtId=null;
+    if(actx && actx.state==='suspended') actx.resume();
+    startOffset=lo; if(!playing){ play(); } else { startSources(lo); }
+    tick();
+  }
+  // 循环开关：开=接管播放，循环 [start-2s,end+2s]；再点=关。同一时刻只有一个点循环（开新的自动顶掉旧的）。
+  function togglePtLoop(p){
+    if(loopPtId===p.id){                       // 关闭本点循环
+      loopPtId=null;
+    }else{                                     // 开启本点循环（顶掉旧的 / 关掉视窗循环）
+      const [lo,hi]=ptSpan(p);
+      loopPtId=p.id; ptLoopLo=lo; ptLoopHi=hi;
+      loopView=false; els.loopBtn.classList.remove('on'); els.loopBtn.textContent='🔁 当前段落循环：关';
+      if(actx && actx.state==='suspended') actx.resume();
+      startOffset=lo; if(!playing){ play(); } else { startSources(lo); }
+    }
+    renderMarks();                             // 旗子图标/高亮同步
+    const cur=findPt(popPtId); if(cur) fillPop(cur);
+    tick();
+  }
+
+  // 事件绑定：旗子交互（事件委托到 .layers）
+  els.layers.addEventListener('mouseover',(e)=>{ if(isTouch) return;
+    const flag=e.target.closest('.pt-flag'); if(!flag) return;
+    openPop(flag.dataset.id, flag);
+  });
+  els.layers.addEventListener('mouseout',(e)=>{ if(isTouch) return;
+    const flag=e.target.closest('.pt-flag'); if(!flag) return;
+    // 移到浮层上不关；否则延迟收起
+    popHideTimer=setTimeout(()=>{ if(!pop.matches(':hover')) closePop(); },160);
+  });
+  // 电脑端：鼠标在浮层上时保持打开，离开浮层再收起
+  pop.addEventListener('mouseenter',()=>{ if(!isTouch) clearTimeout(popHideTimer); });
+  pop.addEventListener('mouseleave',()=>{ if(!isTouch && !pop.classList.contains('editing')) popHideTimer=setTimeout(closePop,160); });
+  // 手机端：tap 旗子切换浮层
+  els.layers.addEventListener('click',(e)=>{
+    const flag=e.target.closest('.pt-flag'); if(!flag) return;
+    e.stopPropagation();
+    if(popPtId===flag.dataset.id){ closePop(); } else { openPop(flag.dataset.id, flag); }
+  });
+  // 点浮层外空白：收起（手机端主要靠这个）
+  document.addEventListener('click',(e)=>{
+    if(popPtId==null) return;
+    if(e.target.closest('.pt-pop')||e.target.closest('.pt-flag')) return;
+    closePop();
+  });
+
+  // 浮层按钮
+  ppPlay.addEventListener('click',(e)=>{ e.stopPropagation(); const p=findPt(popPtId); if(p) playPtSpan(p); });
+  ppLoop.addEventListener('click',(e)=>{ e.stopPropagation(); const p=findPt(popPtId); if(p) togglePtLoop(p); });
+  ppNoteBtn.addEventListener('click',(e)=>{ e.stopPropagation(); pop.classList.add('editing'); clearTimeout(popHideTimer); ppInput.focus(); });
+  ppInput.addEventListener('input',()=>{ const p=findPt(popPtId); if(!p)return; p.note=ppInput.value; save(); });
+  ppInput.addEventListener('blur',()=>{ const p=findPt(popPtId); if(p){ fillPop(p); } renderStructure(); });
+  ppInput.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); ppInput.blur(); } });
+  ppLen.addEventListener('click',(e)=>{ e.stopPropagation();
+    const p=findPt(popPtId); if(!p) return;
+    // 编辑长短：把该点还原成"选中预览段"，进入改片段态，拖两端手柄调整长短后点「确认修改」保存（沿用原逻辑）
+    if(loopPtId===p.id) loopPtId=null;
+    state.activeLayer=p.layerId; cursorT=segStart(p); cursorEnd=segEnd(p);
+    editingNote=p.note||''; editing=true;
+    state.points=state.points.filter(x=>x.id!==p.id);
+    closePop();
+    save();buildLanes();renderMarks();renderModebar();renderStructure();refreshPtBtn();updateSteps();
+    els.layers.scrollIntoView({behavior:'smooth',block:'center'});
+    requestAnimationFrame(()=>{ const sel=els.layers.querySelector('.lane[data-layer="'+p.layerId+'"] .seg-sel'); if(sel){ sel.classList.remove('editing'); void sel.offsetWidth; sel.classList.add('editing'); } });
+  });
+  ppDel.addEventListener('click',(e)=>{ e.stopPropagation();
+    const p=findPt(popPtId); if(!p) return;
+    if(loopPtId===p.id) loopPtId=null;
+    state.points=state.points.filter(x=>x.id!==p.id);
+    closePop();
+    save();renderStructure();renderMarks();updateSteps();tick();
+  });
+  // 滚动/缩放时浮层位置会失准，直接收起（避免悬浮框飘在错误位置）
+  window.addEventListener('scroll',()=>{ if(popPtId!=null) closePop(); }, true);
+  window.addEventListener('resize',()=>{ if(popPtId!=null) closePop(); });
 
   // ---------- 缩放：四轨同步 + 动画补间（丝滑）+ 进度条视窗指示 ----------
   const ZOOM_MAX=8;
@@ -840,7 +1010,8 @@
   }
   function pause(){ if(!playing)return; startOffset=now(); stopSources(); playing=false; els.playBtn.textContent='▶'; cancelAnimationFrame(raf); }
   function seek(t){
-    if(loopView){ t=Math.max(view.start, Math.min(view.end, t)); }   // 循环态：只在当前视窗内跳
+    if(loopPtId){ t=Math.max(ptLoopLo, Math.min(ptLoopHi, t)); }        // 灵感点循环态：只在该点±2s 区间内跳
+    else if(loopView){ t=Math.max(view.start, Math.min(view.end, t)); } // 视窗循环态：只在当前视窗内跳
     else { t=Math.max(0,Math.min(state.duration,t)); }
     if(playing){ startSources(t); } else { startOffset=t; } tick();
   }
@@ -848,6 +1019,7 @@
   // AB段循环开关：只在放大时可用。开启后进度条含义切换为"仅当前视窗"，播到视窗尾自动跳回视窗头
   els.loopBtn.onclick=()=>{
     if(zoom<=1.001) return;                       // 双保险：未放大不生效
+    if(loopPtId){ loopPtId=null; renderMarks(); if(popPtId!=null){const cp=findPt(popPtId); if(cp) fillPop(cp);} }  // 开视窗循环前先解除灵感点循环（两者互斥）
     loopView=!loopView;
     els.loopBtn.classList.toggle('on', loopView);
     els.loopBtn.textContent='🔁 当前段落循环：'+(loopView?'开':'关');
@@ -863,6 +1035,7 @@
     if(!beatData) return;
     showBeats=!showBeats;
     els.beatBtn.classList.toggle('on', showBeats);
+    drawAll();      // 重画波形：开八拍时顶部让出数字带，关闭时恢复满高
     paintBeats();
   };
   // 变速：改速率。正在播时"在当前位置换挡"——先固化当前秒数，再以新速率从该处重启
@@ -917,8 +1090,12 @@
   }
   function tick(){
     let t=now();
+    // 灵感点循环：播到区间尾（或跑到区间外）自动跳回区间头。优先于普通收尾。
+    if(loopPtId && playing && (t>=ptLoopHi-0.02 || t<ptLoopLo-0.02)){
+      seek(ptLoopLo); return;
+    }
     // 变速路径没有 onended，播到结尾在这里收尾（1.0× 由 source.onended 处理）
-    if(playing && rate!==1 && !loopView && t>=state.duration-0.05){
+    if(playing && rate!==1 && !loopView && !loopPtId && t>=state.duration-0.05){
       playing=false; els.playBtn.textContent='▶'; cancelAnimationFrame(raf); stopSources(); startOffset=0; tick(); return;
     }
     // 循环视窗：播到视窗尾（或跑到视窗外）自动跳回视窗头

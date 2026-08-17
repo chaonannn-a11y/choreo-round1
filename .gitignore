@@ -19,6 +19,7 @@
 !stems_itsme/
 !stems_lwymmd/
 !stems_mojito/
+!stems_barbie/
 
 # 4) 目录放行后，仍要挡掉里面可能的杂项
 .DS_Store
