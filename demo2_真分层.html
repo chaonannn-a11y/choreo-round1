@@ -80,11 +80,12 @@
   .beat-num{position:absolute;top:2px;font-family:var(--mono);font-size:9px;font-weight:700;color:rgba(255,255,255,.5);transform:translateX(2px)}
   .beat-num.n1{color:var(--amber);font-size:10px}   /* 第1拍数字用琥珀色，一眼看到小节头 */
   /* 放大后的横向平移滑块：拖 thumb 看放大片段的前后内容。左缩 track-offset 与波形轨道对齐 */
-  .pan{position:relative;height:12px;margin:10px 0 0 var(--track-offset);border-radius:99px;background:#221d19;display:none;cursor:pointer}
+  .pan{position:relative;height:12px;margin:10px 0 0 var(--track-offset);border-radius:99px;background:#221d19;display:none;cursor:pointer;touch-action:none;-webkit-user-select:none;user-select:none}
   .pan.on{display:block}
-  .pan-thumb{position:absolute;top:0;bottom:0;background:var(--amber);opacity:.55;border-radius:99px;min-width:24px;cursor:grab}
+  .pan-thumb{position:absolute;top:0;bottom:0;background:var(--amber);opacity:.55;border-radius:99px;min-width:24px;cursor:grab;touch-action:none}
   .pan-thumb:hover{opacity:.8}
   .pan-thumb:active{cursor:grabbing;opacity:.9}
+  .pan-thumb:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
   /* 手机端（触摸）滑块加粗，方便手指选中；桌面保持纤细 */
   @media (pointer:coarse){ .pan{height:20px} .seg-h{width:30px} .seg-h-l{left:-15px} .seg-h-r{right:-15px} }
   .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink-dim);font-size:14px;text-align:center;z-index:6}
@@ -446,7 +447,7 @@
 
     <div class="time-ruler" id="timeRuler"></div>
 
-    <div class="layers" id="layers">
+    <div class="layers" id="layers" role="region" aria-label="音轨编辑区">
       <div class="loading" id="loading">正在载入 AI 分离的四条音轨…</div>
       <div class="loading-tip" id="loadingTip">📱 打不开？先点一下屏幕再稍等（iPhone/iPad 需要）</div>
     </div>
@@ -458,7 +459,7 @@
     </div>
 
     <!-- 放大后出现：横向平移滑块，拖它看放大片段的前后内容 -->
-    <div class="pan" id="pan"><div class="pan-thumb" id="panThumb"></div></div>
+    <div class="pan" id="pan"><div class="pan-thumb" id="panThumb" role="scrollbar" aria-label="移动当前音轨视窗" aria-controls="layers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0"></div></div>
 
     <div class="modebar" id="modebar"></div>
 
@@ -537,6 +538,7 @@
   // 视图窗口（缩放）：只影响"看到的时间范围"，不影响播放、不动数据
   let view = { start:0, end:0 };   // 秒；end=0 表示未初始化（=整段）
   let zoom = 4;                    // 创作视图只保留局部尺度；全曲观察交给“全曲总览”
+  let followSuspendedByPan = false; // 播放中手动平移后暂时让出自动跟随；下次重新播放时恢复
   let zoomHintTxt = '';            // 缩放提示文案（常驻，renderModebar 时回填）
   let editing = false;             // 是否处于"改片段"态（modebar 给醒目提示）
   let editingNote = '';            // 改片段时暂存原便签，"确认修改"后带回，避免只改长短却丢了记的一句
@@ -1450,6 +1452,10 @@
     const s=view.start/state.duration, w=(view.end-view.start)/state.duration;
     els.panThumb.style.left=(s*100)+'%';
     els.panThumb.style.width=(w*100)+'%';
+    const maxStart=Math.max(0,state.duration-viewLen());
+    const value=maxStart>0?Math.round(view.start/maxStart*100):0;
+    els.panThumb.setAttribute('aria-valuenow',value);
+    els.panThumb.setAttribute('aria-valuetext',fmt(view.start)+' 开始');
   }
   // 把视窗平移到指定起点（保持当前长度、不改缩放），用于拖动 pan
   function panTo(startFrac){
@@ -1478,7 +1484,7 @@
   // 播放时默认跟随播放头：进入视窗左右边缘区后，按当前缩放倍数把播放位置重新居中。
   // AB 循环的边界就是当前视窗，因此该状态保持视窗固定，不参与自动跟随。
   function followPlayhead(t){
-    if(!playing || previewMode || loopView || zoom<=1.001 || dragging || zoomRaf) return;
+    if(!playing || previewMode || loopView || zoom<=1.001 || dragging || followSuspendedByPan || zoomRaf) return;
     const len=viewLen(), margin=len*.12;
     if(t>=view.start+margin && t<=view.end-margin) return;
     const target=computeTargetView(zoom,t);
@@ -1525,30 +1531,48 @@
   (function initPan(){
     let trackpadLogged=false;
     const startDrag=(e)=>{
-      if(zoom<=1.001) return;
+      if(zoom<ZOOM_MIN || (e.button!=null&&e.button!==0)) return;
       e.preventDefault();
+      followSuspendedByPan=true;
       const rect=els.pan.getBoundingClientRect(), thumbW=els.panThumb.getBoundingClientRect().width;
       const isThumb=e.target===els.panThumb;
-      const grabDx = isThumb ? ((e.touches?e.touches[0].clientX:e.clientX) - els.panThumb.getBoundingClientRect().left) : thumbW/2;
+      if(isThumb)els.panThumb.focus({preventScroll:true});
+      const grabDx=isThumb?e.clientX-els.panThumb.getBoundingClientRect().left:thumbW/2;
+      const pointerId=e.pointerId;
       const move=(ev)=>{
-        const cx=(ev.touches?ev.touches[0].clientX:ev.clientX);
-        const leftPx=Math.max(0,Math.min(rect.width-thumbW, cx-rect.left-grabDx));
+        if(ev.pointerId!==pointerId)return;
+        ev.preventDefault();
+        const leftPx=Math.max(0,Math.min(rect.width-thumbW,ev.clientX-rect.left-grabDx));
         panTo(leftPx/rect.width);
       };
       move(e);
-      const up=()=>{ document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up); };
-      document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
-      document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+      if(els.pan.setPointerCapture)els.pan.setPointerCapture(pointerId);
+      const up=(ev)=>{
+        if(ev.pointerId!==pointerId)return;
+        els.pan.removeEventListener('pointermove',move);
+        els.pan.removeEventListener('pointerup',up);
+        els.pan.removeEventListener('pointercancel',up);
+        if(els.pan.hasPointerCapture&&els.pan.hasPointerCapture(pointerId))els.pan.releasePointerCapture(pointerId);
+      };
+      els.pan.addEventListener('pointermove',move);
+      els.pan.addEventListener('pointerup',up);
+      els.pan.addEventListener('pointercancel',up);
     };
-    els.pan.addEventListener('mousedown',startDrag);
-    els.pan.addEventListener('touchstart',startDrag,{passive:false});
-    // 桌面触控板双指横滑：平移当前视窗；播放中主动浏览会先暂停，避免自动跟随抢回视窗。
+    els.pan.addEventListener('pointerdown',startDrag);
+    els.panThumb.addEventListener('keydown',(e)=>{
+      const direction=e.key==='ArrowLeft'?-1:e.key==='ArrowRight'?1:0;
+      if(!direction||zoom<ZOOM_MIN)return;
+      e.preventDefault();
+      followSuspendedByPan=true;
+      panTo((view.start+direction*viewLen()*.1)/state.duration);
+    });
+    // 桌面触控板双指横滑：平移当前视窗，不改变音乐播放状态。
     els.layers.addEventListener('wheel',(e)=>{
       if(previewMode||cursorT!=null||zoom<ZOOM_MIN)return;
       const dx=Math.abs(e.deltaX)>=Math.abs(e.deltaY)?e.deltaX:(e.shiftKey?e.deltaY:0);
       if(Math.abs(dx)<1)return;
       e.preventDefault();
-      if(playing)pause();
+      followSuspendedByPan=true;
       const maxStart=Math.max(0,state.duration-viewLen());
       const next=Math.max(0,Math.min(maxStart,view.start+dx/Math.max(1,els.layers.clientWidth)*viewLen()));
       panTo(next/state.duration);
@@ -1600,6 +1624,7 @@
   }
   function play(){
     if(actx.state==='suspended') actx.resume();
+    followSuspendedByPan=false;
     startSources(startOffset>=state.duration?0:startOffset);
     playing=true;guidePlaybackStart();els.playBtn.textContent='❚❚';updateDraftEditor();loop();
   }
