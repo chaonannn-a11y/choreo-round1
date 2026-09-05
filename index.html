@@ -442,7 +442,7 @@
         <button class="draft-action" id="draftCancelBtn">取消</button>
         <button class="draft-action primary" id="draftConfirmBtn">确认标记</button>
       </div>
-      <div class="draft-help">拖中间移动 · 拖两端调整长度 · 确认前不会覆盖原记录</div>
+      <div class="draft-help">拖中间移动 · 拖两端调整长度（最长 4 个八拍） · 确认前不会覆盖原记录</div>
     </div>
 
     <div class="time-ruler" id="timeRuler"></div>
@@ -567,9 +567,9 @@
   let playing=false, startCtxTime=0, startOffset=0;   // 用 ctx.currentTime 推算播放进度
   let rate=1;            // 播放速率（0.8/0.9/1/2）。=1 走原生 BufferSource；≠1 走 SoundTouch 保音高变速
   let stFilters={};      // {id: SimpleFilter}  SoundTouch 变速管线（仅 rate≠1 时用）；进度由它的 sourcePosition 反推
-  let cursorT=null;   // 打点游标"起点"（秒），null=未落游标；配合 cursorEnd 表示一个 1~5s 的预览片段
+  let cursorT=null;   // 打点游标"起点"（秒），null=未落游标；配合 cursorEnd 表示待确认灵感段
   let cursorEnd=null; // 打点游标"终点"（秒）
-  const SEG_MIN=1, SEG_MAX=5;   // 高光片段时长限制：1个8拍量级，1~5秒（中速歌≈1个8拍）
+  const SEG_MIN=1, SEG_MAX_BEATS=32, SEG_MAX_FALLBACK=20; // 单击默认1拍；拖动最长4个八拍，无拍点时回退20秒
   let raf=null, ready=false;
 
   const els = {
@@ -935,7 +935,8 @@
           const t1=snapBeat(raw);
           let lo=Math.min(t0,t1), hi=Math.max(t0,t1);
           if(hi-lo<0.05) hi=beatAfter(lo,1);
-          if(hi-lo>SEG_MAX){ if(t1>=t0) hi=lo+SEG_MAX; else lo=hi-SEG_MAX; }
+          if(t1>=t0) hi=Math.min(hi,maxSegmentEnd(lo));
+          else lo=Math.max(lo,minSegmentStart(hi));
           state.activeLayer=L.id; cursorT=Math.max(0,lo); cursorEnd=Math.min(state.duration,hi);
           editing=false; editingOrig=null; editingNote=''; segAdjusted=true;
           renderMarks(); updateDraftEditor();
@@ -952,7 +953,7 @@
       };
       lane.addEventListener('mousedown',startRangeDrag);
       lane.addEventListener('touchstart',startRangeDrag,{passive:false});
-      // 左右手柄拖动：调整预览片段的起止（限 1~5 秒），鼠标+触摸通用
+      // 左右手柄拖动：调整预览片段的起止（最长4个八拍），鼠标+触摸通用
       lane.querySelectorAll('.seg-h').forEach(h=>{
         const down=(e)=>{
           if(cursorT==null||state.activeLayer!==L.id) return;
@@ -968,8 +969,8 @@
             let t=view.start+p*viewLen();
             t=snapBeat(t);                                // 拖动时也吸到最近的拍，段长始终是整数拍
             const minDur=hasBeats()?0.05:SEG_MIN;
-            if(side==='l'){ cursorT=Math.max(0,Math.min(t,cursorEnd-minDur)); if(cursorEnd-cursorT>SEG_MAX) cursorT=cursorEnd-SEG_MAX; }
-            else { cursorEnd=Math.min(state.duration,Math.max(t,cursorT+minDur)); if(cursorEnd-cursorT>SEG_MAX) cursorEnd=cursorT+SEG_MAX; }
+            if(side==='l') cursorT=Math.max(minSegmentStart(cursorEnd),Math.max(0,Math.min(t,cursorEnd-minDur)));
+            else cursorEnd=Math.min(maxSegmentEnd(cursorT),Math.min(state.duration,Math.max(t,cursorT+minDur)));
             segAdjusted=true;                            // 拖过手柄=调过长短，之后选别处/点空白要弹窗确认
             renderMarks();updateDraftEditor();
           };
@@ -1066,9 +1067,19 @@
     const bs=beatData.beats;
     let idx=0, bd=Math.abs(t-bs[0]);
     for(let i=1;i<bs.length;i++){ const d=Math.abs(t-bs[i]); if(d<bd){bd=d;idx=i;} }
-    const j=Math.min(bs.length-1, idx+n);
-    return bs[j];
+    const j=idx+n;
+    return j<bs.length?bs[j]:state.duration;
   }
+  function beatBefore(t,n){
+    if(!hasBeats()) return Math.max(0,t-SEG_MIN*n);
+    const bs=beatData.beats;
+    let idx=0,bd=Math.abs(t-bs[0]);
+    for(let i=1;i<bs.length;i++){const d=Math.abs(t-bs[i]);if(d<bd){bd=d;idx=i;}}
+    const j=idx-n;
+    return j>=0?bs[j]:0;
+  }
+  function maxSegmentEnd(start){return hasBeats()?beatAfter(start,SEG_MAX_BEATS):Math.min(state.duration,start+SEG_MAX_FALLBACK);}
+  function minSegmentStart(end){return hasBeats()?beatBefore(end,SEG_MAX_BEATS):Math.max(0,end-SEG_MAX_FALLBACK);}
 
   // ---------- solo/mute（真独奏：调各轨 gain）----------
   function applyMute(){ LAYERS.forEach(L=>{ if(gains[L.id]) gains[L.id].gain.value = state.mute[L.id]?0:1; }); }
