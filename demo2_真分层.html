@@ -95,7 +95,7 @@
   /* 每行 = 左侧喇叭开关（外部） + 右侧波形轨道 */
   .lane-row{display:flex;align-items:stretch;gap:0}
   .lane-row+.lane-row{margin-top:8px}
-  .spk{flex:none;width:var(--spk-w);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:16px;cursor:pointer;border-radius:10px;background:var(--bg-elev);border:1px solid var(--line);margin-right:var(--spk-gap);color:var(--ink-dim);transition:.15s;user-select:none}
+  .spk{flex:none;width:var(--spk-w);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:16px;cursor:pointer;border-radius:10px;background:var(--bg-elev);border:1px solid var(--line);margin-right:var(--spk-gap);padding:0;color:var(--ink-dim);transition:.15s;user-select:none}
   .spk small{font-family:var(--sans);font-size:9.5px;line-height:1}
   .spk:hover{border-color:#4a4038;color:var(--ink)}
   .spk.on{color:var(--sel);border-color:var(--sel);background:var(--sel-soft)}
@@ -468,7 +468,7 @@
       <button class="help-btn" id="helpBtn" aria-label="操作说明">?
         <div class="help-pop">
           <b>怎么用？</b><br>
-          1. <b>单听一层</b>，发现音乐细节。<br>
+          1. <b>单听或组合试听</b>，发现音乐细节。<br>
           2. 点「标灵感」，再点击或拖动波形选择片段。<br>
           3. 在临时编辑栏试听、移动、调长短并记录文字，最后确认。<br>
           4. 去全曲总览回看整首结构。
@@ -884,15 +884,19 @@
   // ---------- lanes ----------
   function buildLanes(){
     [...els.layers.querySelectorAll('.lane-row')].forEach(n=>n.remove());
+    const mixMode=LAYERS.some(L=>!!state.mute[L.id]);
     LAYERS.forEach(L=>{
       const on = !state.mute[L.id];
-      const isSolo=on&&LAYERS.every(x=>x.id===L.id||state.mute[x.id]);
+      const selected=mixMode&&on;
       const sel = cursorT!=null && state.activeLayer===L.id;
       const row=document.createElement('div'); row.className='lane-row'+(cursorT!=null&&state.activeLayer===L.id?' draft-active':''); row.dataset.layer=L.id;
       row.style.setProperty('--sel',L.color); row.style.setProperty('--sel-soft',L.soft);
-      // 左侧“单听”：一次只听该轨；再次点击同一轨恢复全部音轨。
-      const spk=document.createElement('div');spk.className='spk'+(isSolo?' on':'');spk.innerHTML='<span>🎧</span><small>单听</small>';spk.title=isSolo?'恢复全部音轨':'只听'+L.name;
-      spk.onclick=(e)=>{e.stopPropagation();isSolo?unmuteAll():soloLayer(L.id);guideLayerUsed();};
+      // 默认点击进入单听；进入选择态后可继续加入/移除其它轨，组合试听 2–3 层。
+      const spk=document.createElement('button');spk.type='button';
+      spk.className='spk'+(selected?' on':'');
+      spk.innerHTML='<span>🎧</span><small>'+(mixMode?(on?'已选':'加入'):'单听')+'</small>';
+      spk.title=mixMode?(on?'从组合试听中移除'+L.name:'加入组合试听：'+L.name):'只听'+L.name;
+      spk.onclick=(e)=>{e.stopPropagation();toggleLayerListen(L.id);guideLayerUsed();};
       // 右侧波形轨道：默认点击=跳播放；一次性“标灵感”开启后，点击/拖动=创建草稿
       const lane=document.createElement('div'); lane.className='lane'+(on?'':' muted')+(sel?' sel':''); lane.dataset.layer=L.id;
       lane.innerHTML=`<div class="lane-tag" style="color:${L.color}">${L.name}<span class="sub">${L.sub}</span></div>
@@ -1069,6 +1073,18 @@
   // ---------- solo/mute（真独奏：调各轨 gain）----------
   function applyMute(){ LAYERS.forEach(L=>{ if(gains[L.id]) gains[L.id].gain.value = state.mute[L.id]?0:1; }); }
   function soloLayer(id){ LAYERS.forEach(L=>{ state.mute[L.id]=(L.id!==id); }); applyMute(); buildLanes(); renderModebar(); save(); }
+  function toggleLayerListen(id){
+    const mixMode=LAYERS.some(L=>!!state.mute[L.id]);
+    if(!mixMode){ soloLayer(id); return; }
+    const audible=LAYERS.filter(L=>!state.mute[L.id]);
+    if(!state.mute[id]&&audible.length===1){
+      state.mute={};
+    }else{
+      state.mute[id]=!state.mute[id];
+      if(LAYERS.every(L=>!state.mute[L.id]))state.mute={};
+    }
+    applyMute();buildLanes();renderModebar();save();
+  }
   function unmuteAll(){ state.mute={}; applyMute(); buildLanes(); renderModebar(); save(); }
 
   function renderModebar(){
